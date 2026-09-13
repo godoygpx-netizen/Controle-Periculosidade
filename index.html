@@ -394,7 +394,7 @@
 </main>
 
 <footer style="padding:14px 16px 20px; text-align:center; color:var(--text-muted); font-family:'IBM Plex Mono'; font-size:0.68rem;">
-  v14 · dados compartilhados (Firebase) · atualizado em 13/09/2026
+  v15 · dados compartilhados (Firebase) · atualizado em 13/09/2026
 </footer>
 
 <div class="overlay" id="overlay">
@@ -849,20 +849,20 @@ function buildSummaryText(){
   const today = new Date();
   const dateStr = fmtDate(today.toISOString().slice(0,10));
   const all = [...members].sort((a,b) => a.name.localeCompare(b.name, 'pt-BR'));
-  const lines = [`Controle de Periculosidade — ${dateStr}`, ''];
+  const lines = [`*Controle de Periculosidade* — ${dateStr}`, ''];
   all.forEach(m => {
     const st = statusFor(m.id);
     let line;
     if(st.state === 'ok'){
-      line = `✅ ${m.name} — válida até ${fmtDate(st.rec.validUntil)}`;
+      line = `✅ *${m.name}* — válida até ${fmtDate(st.rec.validUntil)}`;
       if(st.rec.signedBy !== m.id){
         const sub = members.find(x=>x.id===st.rec.signedBy);
         line += ` (coberta por ${sub ? sub.name : 'substituto'})`;
       }
     } else if(st.state === 'warn'){
-      line = `⚠️ ${m.name} — vencida desde ${fmtDate(st.rec.validUntil)}`;
+      line = `⚠️ *${m.name}* — vencida desde ${fmtDate(st.rec.validUntil)}`;
     } else {
-      line = `— ${m.name} — sem registro`;
+      line = `➖ *${m.name}* — sem registro`;
     }
     lines.push(line);
   });
@@ -886,15 +886,22 @@ function buildRankingText(){
   if(!highlightN || highlightN < 1) highlightN = 1;
   if(highlightN > ranked.length) highlightN = ranked.length;
 
-  const proximos = ranked.slice(0, highlightN).map(m => m.name);
+  const proximos = ranked.slice(0, highlightN);
+  const resto = ranked.slice(highlightN);
 
-  const lines = [`Ranking de assinaturas — ${dateStr}`, ''];
-  lines.push(`Próximos a assinar: ${proximos.join(', ')}`, '');
-  ranked.forEach((m, idx) => {
-    const tag = idx < highlightN ? ' ⭐ prioridade' : '';
+  const rowText = (m, idx) => {
     const lastText = m.lastDate ? `última em ${fmtDate(m.lastDate)}` : 'nunca assinou';
-    lines.push(`${idx+1}º ${m.name} — ${m.count} assinatura${m.count===1?'':'s'} — ${lastText}${tag}`);
-  });
+    return `${idx+1}º *${m.name}* — ${m.count} assinatura${m.count===1?'':'s'} — ${lastText}`;
+  };
+
+  const lines = [`*Ranking de assinaturas* — ${dateStr}`, ''];
+  lines.push(`⭐ *Próximos a assinar:* ${proximos.map(m=>m.name).join(', ')}`, '');
+  lines.push('*Prioridade*');
+  proximos.forEach((m, idx) => lines.push(rowText(m, idx)));
+  if(resto.length){
+    lines.push('', '*Demais*');
+    resto.forEach((m, idx) => lines.push(rowText(m, idx + highlightN)));
+  }
   return lines.join('\n');
 }
 
