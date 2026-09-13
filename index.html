@@ -237,9 +237,12 @@
     background:var(--bg);
     border:1px solid var(--line-strong);
     color:var(--text);
-    padding:9px 10px;
+    padding:11px 10px;
     font-family:'IBM Plex Mono', monospace;
-    font-size:0.9rem;
+    font-size:0.95rem;
+    color-scheme: dark;
+    min-height:44px;
+    cursor:pointer;
   }
   .sheet button.confirm{
     width:100%; padding:10px; background:var(--amber); border:none;
@@ -545,6 +548,15 @@ function closeSheet(){
 }
 document.getElementById('cancelSheet').onclick = closeSheet;
 document.getElementById('overlay').onclick = (e) => { if(e.target.id==='overlay') closeSheet(); };
+
+// Alguns navegadores Android só abrem o calendário nativo se o toque cair
+// exatamente no ícone; isso força a abertura em qualquer toque no campo.
+const signDateInputEl = document.getElementById('signDateInput');
+signDateInputEl.addEventListener('click', () => {
+  if(typeof signDateInputEl.showPicker === 'function'){
+    try { signDateInputEl.showPicker(); } catch(e) {}
+  }
+});
 
 function renderHistorico(){
   const wrap = document.getElementById('histWrap');
