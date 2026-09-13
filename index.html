@@ -219,6 +219,12 @@
   .hist-item .d{font-family:'IBM Plex Mono'; font-size:0.72rem; color:var(--text-muted); margin-bottom:2px;}
   .hist-item .who{color:var(--steel);}
   .hist-item .of{color:var(--amber);}
+  .hist-actions{display:flex; gap:14px; margin-top:6px;}
+  .hist-actions button{
+    background:none; border:none; padding:0; cursor:pointer;
+    font-family:'IBM Plex Mono'; font-size:0.74rem; color:var(--text-muted);
+  }
+  .hist-actions button.del{color:var(--warn);}
 
   /* Modal for substitute suggestion */
   .overlay{
@@ -321,7 +327,7 @@
 </main>
 
 <footer style="padding:14px 16px 20px; text-align:center; color:var(--text-muted); font-family:'IBM Plex Mono'; font-size:0.68rem;">
-  v4 · atualizado em 13/09/2026
+  v5 · atualizado em 13/09/2026
 </footer>
 
 <div class="overlay" id="overlay">
@@ -549,9 +555,11 @@ function registerSignature(slotMemberId, signedBy, date, reason){
 }
 
 let pendingSlotMember = null;
+let editingRecordId = null;
 
 function openSignSelf(memberId){
   pendingSlotMember = memberId;
+  editingRecordId = null;
   const member = members.find(m => m.id === memberId);
 
   document.getElementById('sheetTitle').textContent = `Registrar assinatura de ${member.name}`;
@@ -563,6 +571,7 @@ function openSignSelf(memberId){
 
   const confirmBtn = document.getElementById('confirmSelfBtn');
   confirmBtn.style.display = 'block';
+  confirmBtn.textContent = 'Registrar assinatura';
   confirmBtn.onclick = () => {
     const date = document.getElementById('signDateInput').value || todayISO();
     registerSignature(memberId, memberId, date);
@@ -575,6 +584,7 @@ function openSignSelf(memberId){
 
 function openSubstitute(memberId){
   pendingSlotMember = memberId;
+  editingRecordId = null;
   const member = members.find(m => m.id === memberId);
   const otherTeam = member.team === 'A' ? 'B' : 'A';
   const candidates = members.filter(m => m.team === otherTeam)
@@ -615,11 +625,61 @@ function confirmSubstitute(substituteId){
   render();
 }
 
+function openEditRecord(recordId){
+  const rec = signatures.find(s => s.id === recordId);
+  if(!rec) return;
+  const slotMember = members.find(m => m.id === rec.slotMemberId);
+  const signer = members.find(m => m.id === rec.signedBy);
+  const isSubstitute = rec.signedBy !== rec.slotMemberId;
+
+  pendingSlotMember = null;
+  editingRecordId = recordId;
+
+  document.getElementById('sheetTitle').textContent = `Editar assinatura de ${slotMember ? slotMember.name : '?'}`;
+  document.getElementById('sheetSub').textContent = isSubstitute
+    ? `Assinada por ${signer ? signer.name : '?'} no lugar do titular. Ajuste a data e a justificativa.`
+    : 'Ajuste a data desta assinatura.';
+  document.getElementById('signDateInput').value = rec.date;
+  document.getElementById('reasonRow').style.display = isSubstitute ? 'block' : 'none';
+  document.getElementById('reasonInput').value = rec.reason || '';
+  document.getElementById('candidateList').innerHTML = '';
+
+  const confirmBtn = document.getElementById('confirmSelfBtn');
+  confirmBtn.style.display = 'block';
+  confirmBtn.textContent = 'Salvar alterações';
+  confirmBtn.onclick = () => {
+    const date = document.getElementById('signDateInput').value || rec.date;
+    if(isSubstitute){
+      const reason = document.getElementById('reasonInput').value.trim();
+      if(!reason){
+        alert('Preencha a justificativa da substituição antes de salvar.');
+        return;
+      }
+      rec.reason = reason;
+    }
+    rec.date = date;
+    rec.validUntil = cycleEnd(date);
+    save();
+    closeSheet();
+    render();
+  };
+
+  document.getElementById('overlay').classList.add('active');
+}
+
+function deleteRecord(recordId){
+  if(!confirm('Excluir esta assinatura? Essa ação não pode ser desfeita.')) return;
+  signatures = signatures.filter(s => s.id !== recordId);
+  save();
+  render();
+}
+
 function closeSheet(){
   document.getElementById('overlay').classList.remove('active');
   document.getElementById('confirmSelfBtn').style.display = 'none';
   document.getElementById('reasonRow').style.display = 'none';
   pendingSlotMember = null;
+  editingRecordId = null;
 }
 document.getElementById('cancelSheet').onclick = closeSheet;
 document.getElementById('overlay').onclick = (e) => { if(e.target.id==='overlay') closeSheet(); };
@@ -635,19 +695,26 @@ signDateInputEl.addEventListener('click', () => {
 
 function renderHistorico(){
   const wrap = document.getElementById('histWrap');
-  const subs = signatures.filter(s => s.signedBy !== s.slotMemberId)
-    .sort((a,b) => b.date.localeCompare(a.date));
-  if(subs.length === 0){
-    wrap.innerHTML = `<div class="empty">Nenhuma substituição registrada ainda.</div>`;
+  const all = [...signatures].sort((a,b) => b.date.localeCompare(a.date));
+  if(all.length === 0){
+    wrap.innerHTML = `<div class="empty">Nenhuma assinatura registrada ainda.</div>`;
     return;
   }
-  wrap.innerHTML = subs.map(s => {
-    const sub = members.find(m=>m.id===s.signedBy);
+  wrap.innerHTML = all.map(s => {
+    const signer = members.find(m=>m.id===s.signedBy);
     const orig = members.find(m=>m.id===s.slotMemberId);
+    const isSubstitute = s.signedBy !== s.slotMemberId;
+    const line = isSubstitute
+      ? `<span class="who">${signer?escapeHtml(signer.name):'?'}</span> assinou no lugar de <span class="of">${orig?escapeHtml(orig.name):'?'}</span>`
+      : `<span class="who">${orig?escapeHtml(orig.name):'?'}</span> assinou (própria)`;
     return `<div class="hist-item">
       <div class="d">${fmtDate(s.date)}</div>
-      <div><span class="who">${sub?escapeHtml(sub.name):'?'}</span> assinou no lugar de <span class="of">${orig?escapeHtml(orig.name):'?'}</span></div>
+      <div>${line}</div>
       ${s.reason ? `<div style="margin-top:4px; color:var(--text-muted); font-size:0.82rem;">${escapeHtml(s.reason)}</div>` : ''}
+      <div class="hist-actions">
+        <button onclick="openEditRecord('${s.id}')">editar</button>
+        <button class="del" onclick="deleteRecord('${s.id}')">excluir</button>
+      </div>
     </div>`;
   }).join('');
 }
