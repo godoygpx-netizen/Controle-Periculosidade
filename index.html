@@ -89,6 +89,12 @@
   .summary-card .label{font-size:0.72rem; color:var(--text-muted); margin-top:2px;}
   .summary-card.warn .num{color:var(--warn);}
   .summary-card.ok .num{color:var(--ok);}
+  .copy-btn{
+    width:100%; padding:11px; margin-bottom:16px;
+    background:none; border:1px solid var(--line-strong); color:var(--text);
+    font-family:'IBM Plex Sans'; font-size:0.86rem; cursor:pointer;
+  }
+  .copy-btn.copied{border-color:var(--ok); color:var(--ok);}
 
   section.team{
     margin-bottom:22px;
@@ -336,6 +342,7 @@
 
   <div class="view active" id="view-painel">
     <div class="summary-row" id="summaryRow"></div>
+    <button type="button" class="copy-btn" id="copySummaryBtn">Copiar resumo</button>
     <div id="teamsWrap"></div>
   </div>
 
@@ -367,7 +374,7 @@
 </main>
 
 <footer style="padding:14px 16px 20px; text-align:center; color:var(--text-muted); font-family:'IBM Plex Mono'; font-size:0.68rem;">
-  v11 · atualizado em 13/09/2026
+  v12 · atualizado em 13/09/2026
 </footer>
 
 <div class="overlay" id="overlay">
@@ -797,6 +804,58 @@ function renderHistorico(){
     </div>`;
   }).join('');
 }
+
+function buildSummaryText(){
+  const today = new Date();
+  const dateStr = fmtDate(today.toISOString().slice(0,10));
+  const all = [...members].sort((a,b) => a.name.localeCompare(b.name, 'pt-BR'));
+  const lines = [`Controle de Periculosidade — ${dateStr}`, ''];
+  all.forEach(m => {
+    const st = statusFor(m.id);
+    let line;
+    if(st.state === 'ok'){
+      line = `✅ ${m.name} — válida até ${fmtDate(st.rec.validUntil)}`;
+      if(st.rec.signedBy !== m.id){
+        const sub = members.find(x=>x.id===st.rec.signedBy);
+        line += ` (coberta por ${sub ? sub.name : 'substituto'})`;
+      }
+    } else if(st.state === 'warn'){
+      line = `⚠️ ${m.name} — vencida desde ${fmtDate(st.rec.validUntil)}`;
+    } else {
+      line = `— ${m.name} — sem registro`;
+    }
+    lines.push(line);
+  });
+  return lines.join('\n');
+}
+
+document.getElementById('copySummaryBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('copySummaryBtn');
+  const text = buildSummaryText();
+  let ok = false;
+  try {
+    await navigator.clipboard.writeText(text);
+    ok = true;
+  } catch(e){
+    // fallback para navegadores sem suporte a clipboard API
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    try { ok = document.execCommand('copy'); } catch(e2) { ok = false; }
+    document.body.removeChild(ta);
+  }
+  const original = btn.textContent;
+  btn.textContent = ok ? 'Copiado!' : 'Não foi possível copiar';
+  btn.classList.toggle('copied', ok);
+  setTimeout(() => {
+    btn.textContent = original;
+    btn.classList.remove('copied');
+  }, 2000);
+});
 
 function renderMembros(){
   const wrap = document.getElementById('manageWrap');
