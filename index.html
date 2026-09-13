@@ -143,7 +143,11 @@
   .status-pill.warn{color:var(--warn); background:var(--warn-dim); border-color:rgba(193,80,58,0.3);}
   .status-pill.none{color:var(--text-muted); background:rgba(154,160,166,0.1); border-color:var(--line);}
 
-  .row-actions{display:flex; gap:6px; flex-shrink:0;}
+  .row-actions{display:flex; gap:6px; flex-shrink:0; align-items:center;}
+  .row-edit{
+    background:none; border:none; padding:0; cursor:pointer;
+    font-family:'IBM Plex Mono'; font-size:0.7rem; color:var(--text-muted);
+  }
   button.btn{
     font-family:'IBM Plex Sans';
     font-size:0.76rem;
@@ -363,7 +367,7 @@
 </main>
 
 <footer style="padding:14px 16px 20px; text-align:center; color:var(--text-muted); font-family:'IBM Plex Mono'; font-size:0.68rem;">
-  v10 · atualizado em 13/09/2026
+  v11 · atualizado em 13/09/2026
 </footer>
 
 <div class="overlay" id="overlay">
@@ -492,6 +496,7 @@ function memberRowHtml(m){
       </div>
       <div class="row-actions">
         <span class="status-pill ${pillClass}">${pillText}</span>
+        ${st.rec ? `<button class="row-edit" onclick="openEditRecord('${st.rec.id}')">editar</button>` : ''}
       </div>
     </div>
     ${needsAction ? `
