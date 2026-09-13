@@ -211,6 +211,16 @@
   .member-manage-row .del{color:var(--warn); background:none; border:none; font-family:'IBM Plex Mono'; font-size:0.78rem; cursor:pointer;}
 
   /* Ranking */
+  .rank-config{
+    display:flex; align-items:center; gap:10px; margin-bottom:16px;
+    padding:12px; background:var(--surface); border:1px solid var(--line);
+  }
+  .rank-config label{font-size:0.82rem; color:var(--text-muted); flex:1;}
+  .rank-config input[type=number]{
+    width:64px; background:var(--bg); border:1px solid var(--line-strong);
+    color:var(--text); padding:8px; font-family:'IBM Plex Mono'; font-size:0.95rem;
+    text-align:center;
+  }
   .rank-row{
     display:flex; align-items:center; gap:12px;
     padding:12px; border-bottom:1px solid var(--line);
@@ -318,14 +328,14 @@
 
   <div class="view active" id="view-painel">
     <div class="summary-row" id="summaryRow"></div>
-    <div class="painel-toggle" id="painelToggle">
-      <button type="button" data-mode="teams" class="active">Equipes A e B</button>
-      <button type="button" data-mode="geral">Listagem geral</button>
-    </div>
     <div id="teamsWrap"></div>
   </div>
 
   <div class="view" id="view-ranking">
+    <div class="rank-config" id="rankConfig">
+      <label for="highlightCount">Destacar quantas pessoas</label>
+      <input type="number" id="highlightCount" min="1" step="1" value="1">
+    </div>
     <div id="rankWrap"></div>
   </div>
 
@@ -337,11 +347,6 @@
     <div class="add-form">
       <label>Nome do integrante</label>
       <input type="text" id="newName" placeholder="Ex.: Carlos Andrade">
-      <label>Equipe</label>
-      <div class="team-select">
-        <button type="button" id="pickA" data-team="A">Equipe A</button>
-        <button type="button" id="pickB" data-team="B">Equipe B</button>
-      </div>
       <button type="button" class="submit" id="addMemberBtn">Cadastrar</button>
     </div>
     <div id="manageWrap"></div>
@@ -350,7 +355,7 @@
 </main>
 
 <footer style="padding:14px 16px 20px; text-align:center; color:var(--text-muted); font-family:'IBM Plex Mono'; font-size:0.68rem;">
-  v6 · atualizado em 13/09/2026
+  v8 · atualizado em 13/09/2026
 </footer>
 
 <div class="overlay" id="overlay">
@@ -378,7 +383,6 @@ const CYCLE_START_DAY = 16; // ciclo vai do dia 16 ao dia 15 do mês seguinte
 
 let members = JSON.parse(localStorage.getItem(STORE_MEMBERS) || '[]');
 let signatures = JSON.parse(localStorage.getItem(STORE_SIGNATURES) || '[]');
-let pickedTeam = null;
 
 function save(){
   localStorage.setItem(STORE_MEMBERS, JSON.stringify(members));
@@ -443,13 +447,11 @@ function renderHeader(){
   if(members.length === 0){
     sub.textContent = 'nenhum integrante cadastrado ainda';
   } else {
-    sub.textContent = `${members.length} integrantes · equipe A e equipe B · ciclo do dia 16 ao dia 15`;
+    sub.textContent = `${members.length} integrantes · ciclo do dia 16 ao dia 15`;
   }
 }
 
-let painelMode = localStorage.getItem('peric_painel_mode') || 'teams';
-
-function memberRowHtml(m, showTeamTag){
+function memberRowHtml(m){
   const st = statusFor(m.id);
   let pillClass = 'none', pillText = 'sem registro';
   let metaLine = '';
@@ -467,11 +469,10 @@ function memberRowHtml(m, showTeamTag){
     pillClass='none'; pillText = 'sem registro';
   }
   const needsAction = st.state !== 'ok';
-  const teamTag = showTeamTag ? `<span class="team-tag ${m.team}">${m.team}</span>` : '';
   return `
     <div class="member-row">
       <div class="member-info">
-        <div class="nm">${escapeHtml(m.name)}${teamTag}</div>
+        <div class="nm">${escapeHtml(m.name)}</div>
         <div class="meta">${metaLine || '&nbsp;'}</div>
       </div>
       <div class="row-actions">
@@ -489,23 +490,13 @@ function memberRowHtml(m, showTeamTag){
   `;
 }
 
-document.querySelectorAll('#painelToggle button').forEach(btn => {
-  btn.addEventListener('click', () => {
-    painelMode = btn.dataset.mode;
-    localStorage.setItem('peric_painel_mode', painelMode);
-    document.querySelectorAll('#painelToggle button').forEach(b => b.classList.toggle('active', b === btn));
-    renderPainel();
-  });
-});
-
 function renderPainel(){
   const summaryRow = document.getElementById('summaryRow');
   const teamsWrap = document.getElementById('teamsWrap');
-  document.querySelectorAll('#painelToggle button').forEach(b => b.classList.toggle('active', b.dataset.mode === painelMode));
 
   if(members.length === 0){
     summaryRow.innerHTML = '';
-    teamsWrap.innerHTML = `<div class="empty">Cadastre os integrantes das duas equipes na aba <strong>Membros</strong> para começar o controle.</div>`;
+    teamsWrap.innerHTML = `<div class="empty">Cadastre os integrantes na aba <strong>Membros</strong> para começar o controle.</div>`;
     return;
   }
 
@@ -522,43 +513,19 @@ function renderPainel(){
     <div class="summary-card"><div class="num mono">${subCount}</div><div class="label">substituições no histórico</div></div>
   `;
 
+  const all = [...members].sort((a,b) => a.name.localeCompare(b.name, 'pt-BR'));
+  const section = document.createElement('section');
+  section.className = 'team';
+  const rows = all.map(m => memberRowHtml(m)).join('');
+  section.innerHTML = `
+    <div class="team-tab" style="border-left:4px solid var(--line-strong);">
+      <span class="name">Integrantes</span>
+      <span class="count mono">${all.length} integrantes</span>
+    </div>
+    ${rows}
+  `;
   teamsWrap.innerHTML = '';
-
-  if(painelMode === 'geral'){
-    const all = [...members].sort((a,b) => a.name.localeCompare(b.name, 'pt-BR'));
-    const section = document.createElement('section');
-    section.className = 'team';
-    const rows = all.map(m => memberRowHtml(m, true)).join('');
-    section.innerHTML = `
-      <div class="team-tab" style="border-left:4px solid var(--line-strong);">
-        <span class="name">Todos os integrantes</span>
-        <span class="count mono">${all.length} integrantes</span>
-      </div>
-      ${rows}
-    `;
-    teamsWrap.appendChild(section);
-    return;
-  }
-
-  ['A','B'].forEach(team => {
-    const teamMembers = members.filter(m => m.team === team);
-    const section = document.createElement('section');
-    section.className = `team ${team}`;
-    let rows = '';
-    if(teamMembers.length === 0){
-      rows = `<div class="empty" style="border:none;">sem integrantes nesta equipe</div>`;
-    } else {
-      rows = teamMembers.map(m => memberRowHtml(m, false)).join('');
-    }
-    section.innerHTML = `
-      <div class="team-tab">
-        <span class="name">Equipe ${team}</span>
-        <span class="count mono">${teamMembers.length} integrantes</span>
-      </div>
-      ${rows}
-    `;
-    teamsWrap.appendChild(section);
-  });
+  teamsWrap.appendChild(section);
 }
 
 function escapeHtml(str){
@@ -610,15 +577,14 @@ function openSubstitute(memberId){
   pendingSlotMember = memberId;
   editingRecordId = null;
   const member = members.find(m => m.id === memberId);
-  const otherTeam = member.team === 'A' ? 'B' : 'A';
-  const candidates = members.filter(m => m.team === otherTeam)
+  const candidates = members.filter(m => m.id !== memberId)
     .map(m => ({...m, count: totalSignedBy(m.id)}))
     .sort((a,b) => a.count - b.count || a.name.localeCompare(b.name));
 
   document.getElementById('sheetTitle').textContent = `Substituir ${member.name}`;
   document.getElementById('sheetSub').textContent = candidates.length
-    ? `Escolha a data e o substituto (sugestão por menor número de assinaturas, Equipe ${otherTeam}):`
-    : `Não há integrantes cadastrados na Equipe ${otherTeam}.`;
+    ? `Escolha a data e o substituto (sugestão por menor número de assinaturas):`
+    : `Não há outros integrantes cadastrados.`;
   document.getElementById('signDateInput').value = todayISO();
   document.getElementById('reasonRow').style.display = 'block';
   document.getElementById('reasonInput').value = '';
@@ -720,23 +686,29 @@ signDateInputEl.addEventListener('click', () => {
 function renderRanking(){
   const wrap = document.getElementById('rankWrap');
   if(members.length === 0){
-    wrap.innerHTML = `<div class="empty">Cadastre os integrantes das duas equipes na aba <strong>Membros</strong> para ver o ranking.</div>`;
+    wrap.innerHTML = `<div class="empty">Cadastre os integrantes na aba <strong>Membros</strong> para ver o ranking.</div>`;
     return;
   }
   const ranked = members
     .map(m => ({...m, count: totalSignedBy(m.id)}))
-    .sort((a,b) => b.count - a.count || a.name.localeCompare(b.name, 'pt-BR'));
+    .sort((a,b) => a.count - b.count || a.name.localeCompare(b.name, 'pt-BR'));
+
+  let highlightN = parseInt(localStorage.getItem('peric_rank_highlight_n'), 10);
+  if(!highlightN || highlightN < 1) highlightN = 1;
+  if(highlightN > ranked.length) highlightN = ranked.length;
+  document.getElementById('highlightCount').value = highlightN;
 
   wrap.innerHTML = `<section class="team">
-    <div class="team-tab" style="border-left:4px solid var(--line-strong);">
-      <span class="name">Quem assinou mais vezes</span>
+    <div class="team-tab" style="border-left:4px solid var(--amber);">
+      <span class="name">Prioridade para a próxima assinatura</span>
       <span class="count mono">${ranked.length} integrantes</span>
     </div>
     ${ranked.map((m, idx) => `
-      <div class="rank-row${idx===0 ? ' top1' : ''}">
+      <div class="rank-row${idx < highlightN ? ' top1' : ''}">
         <div class="rank-pos">${idx+1}º</div>
         <div class="rank-info">
-          <div class="nm">${escapeHtml(m.name)}<span class="team-tag ${m.team}">${m.team}</span></div>
+          <div class="nm">${escapeHtml(m.name)}</div>
+          ${idx < highlightN ? `<div class="meta" style="font-size:0.72rem; color:var(--amber); font-family:'IBM Plex Mono'; margin-top:2px;">prioridade</div>` : ''}
         </div>
         <div class="rank-count">${m.count}</div>
       </div>
@@ -776,18 +748,13 @@ function renderMembros(){
     wrap.innerHTML = `<div class="empty">Nenhum integrante cadastrado.</div>`;
     return;
   }
-  let html = '';
-  ['A','B'].forEach(team => {
-    const teamMembers = members.filter(m=>m.team===team);
-    html += `<div style="margin:16px 0 6px; font-family:'Space Grotesk'; font-size:0.86rem; color:var(--text-muted);">Equipe ${team} · ${teamMembers.length}/6</div>`;
-    teamMembers.forEach(m => {
-      html += `<div class="member-manage-row">
-        <span>${escapeHtml(m.name)}</span>
-        <button class="del" onclick="removeMember('${m.id}')">remover</button>
-      </div>`;
-    });
-  });
-  wrap.innerHTML = html;
+  const all = [...members].sort((a,b) => a.name.localeCompare(b.name, 'pt-BR'));
+  wrap.innerHTML = all.map(m => `
+    <div class="member-manage-row">
+      <span>${escapeHtml(m.name)}</span>
+      <button class="del" onclick="removeMember('${m.id}')">remover</button>
+    </div>
+  `).join('');
 }
 
 function removeMember(id){
@@ -797,27 +764,22 @@ function removeMember(id){
   render();
 }
 
-document.getElementById('pickA').onclick = () => pickTeam('A');
-document.getElementById('pickB').onclick = () => pickTeam('B');
-function pickTeam(t){
-  pickedTeam = t;
-  document.getElementById('pickA').classList.toggle('picked-A', t==='A');
-  document.getElementById('pickB').classList.toggle('picked-B', t==='B');
-}
-
 document.getElementById('addMemberBtn').onclick = () => {
   const nameInput = document.getElementById('newName');
   const name = nameInput.value.trim();
   if(!name){ alert('Digite o nome do integrante.'); return; }
-  if(!pickedTeam){ alert('Escolha a equipe (A ou B).'); return; }
-  members.push({ id: uid(), name, team: pickedTeam });
+  members.push({ id: uid(), name });
   save();
   nameInput.value = '';
-  pickedTeam = null;
-  document.getElementById('pickA').classList.remove('picked-A');
-  document.getElementById('pickB').classList.remove('picked-B');
   render();
 };
+
+document.getElementById('highlightCount').addEventListener('change', (e) => {
+  let n = parseInt(e.target.value, 10);
+  if(!n || n < 1) n = 1;
+  localStorage.setItem('peric_rank_highlight_n', n);
+  renderRanking();
+});
 
 // tab navigation
 document.querySelectorAll('nav.tabs button').forEach(btn => {
