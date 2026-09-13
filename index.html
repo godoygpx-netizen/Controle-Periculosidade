@@ -59,8 +59,8 @@
     border:none;
     color:var(--text-muted);
     font-family:'IBM Plex Sans', sans-serif;
-    font-size:0.86rem;
-    padding:13px 6px;
+    font-size:0.78rem;
+    padding:13px 4px;
     border-bottom:2px solid transparent;
     cursor:pointer;
   }
@@ -210,6 +210,24 @@
   }
   .member-manage-row .del{color:var(--warn); background:none; border:none; font-family:'IBM Plex Mono'; font-size:0.78rem; cursor:pointer;}
 
+  /* Ranking */
+  .rank-row{
+    display:flex; align-items:center; gap:12px;
+    padding:12px; border-bottom:1px solid var(--line);
+  }
+  .rank-row:last-child{border-bottom:none;}
+  .rank-pos{
+    font-family:'IBM Plex Mono'; font-size:0.95rem; color:var(--text-muted);
+    width:26px; flex-shrink:0;
+  }
+  .rank-row.top1 .rank-pos{color:var(--amber);}
+  .rank-info{flex:1; min-width:0;}
+  .rank-info .nm{font-size:0.94rem; font-weight:500;}
+  .rank-count{
+    font-family:'IBM Plex Mono'; font-size:0.98rem; font-weight:600; color:var(--ok);
+    flex-shrink:0;
+  }
+
   /* History */
   .hist-item{
     padding:11px 12px;
@@ -291,6 +309,7 @@
 
 <nav class="tabs">
   <button data-view="painel" class="active">Painel</button>
+  <button data-view="ranking">Ranking</button>
   <button data-view="historico">Histórico</button>
   <button data-view="membros">Membros</button>
 </nav>
@@ -304,6 +323,10 @@
       <button type="button" data-mode="geral">Listagem geral</button>
     </div>
     <div id="teamsWrap"></div>
+  </div>
+
+  <div class="view" id="view-ranking">
+    <div id="rankWrap"></div>
   </div>
 
   <div class="view" id="view-historico">
@@ -327,7 +350,7 @@
 </main>
 
 <footer style="padding:14px 16px 20px; text-align:center; color:var(--text-muted); font-family:'IBM Plex Mono'; font-size:0.68rem;">
-  v5 · atualizado em 13/09/2026
+  v6 · atualizado em 13/09/2026
 </footer>
 
 <div class="overlay" id="overlay">
@@ -410,6 +433,7 @@ function statusFor(memberId){
 function render(){
   renderHeader();
   renderPainel();
+  renderRanking();
   renderHistorico();
   renderMembros();
 }
@@ -692,6 +716,33 @@ signDateInputEl.addEventListener('click', () => {
     try { signDateInputEl.showPicker(); } catch(e) {}
   }
 });
+
+function renderRanking(){
+  const wrap = document.getElementById('rankWrap');
+  if(members.length === 0){
+    wrap.innerHTML = `<div class="empty">Cadastre os integrantes das duas equipes na aba <strong>Membros</strong> para ver o ranking.</div>`;
+    return;
+  }
+  const ranked = members
+    .map(m => ({...m, count: totalSignedBy(m.id)}))
+    .sort((a,b) => b.count - a.count || a.name.localeCompare(b.name, 'pt-BR'));
+
+  wrap.innerHTML = `<section class="team">
+    <div class="team-tab" style="border-left:4px solid var(--line-strong);">
+      <span class="name">Quem assinou mais vezes</span>
+      <span class="count mono">${ranked.length} integrantes</span>
+    </div>
+    ${ranked.map((m, idx) => `
+      <div class="rank-row${idx===0 ? ' top1' : ''}">
+        <div class="rank-pos">${idx+1}º</div>
+        <div class="rank-info">
+          <div class="nm">${escapeHtml(m.name)}<span class="team-tag ${m.team}">${m.team}</span></div>
+        </div>
+        <div class="rank-count">${m.count}</div>
+      </div>
+    `).join('')}
+  </section>`;
+}
 
 function renderHistorico(){
   const wrap = document.getElementById('histWrap');
