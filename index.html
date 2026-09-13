@@ -256,6 +256,16 @@
     min-height:44px;
     cursor:pointer;
   }
+  .sheet textarea{
+    width:100%;
+    background:var(--bg);
+    border:1px solid var(--line-strong);
+    color:var(--text);
+    padding:9px 10px;
+    font-family:'IBM Plex Sans', sans-serif;
+    font-size:0.88rem;
+    resize:vertical;
+  }
   .sheet button.confirm{
     width:100%; padding:10px; background:var(--amber); border:none;
     color:#14171A; font-weight:600; font-family:'Space Grotesk'; margin-top:4px;
@@ -310,6 +320,10 @@
 
 </main>
 
+<footer style="padding:14px 16px 20px; text-align:center; color:var(--text-muted); font-family:'IBM Plex Mono'; font-size:0.68rem;">
+  v4 · atualizado em 13/09/2026
+</footer>
+
 <div class="overlay" id="overlay">
   <div class="sheet">
     <h3 id="sheetTitle"></h3>
@@ -317,6 +331,10 @@
     <div class="date-row">
       <label>Data da assinatura</label>
       <input type="date" id="signDateInput">
+    </div>
+    <div class="date-row" id="reasonRow" style="display:none;">
+      <label>Justificativa da substituição</label>
+      <textarea id="reasonInput" rows="3" placeholder="Ex.: Ana está de férias / atestado / folga"></textarea>
     </div>
     <div id="candidateList"></div>
     <button class="confirm" id="confirmSelfBtn" style="display:none;">Registrar assinatura</button>
@@ -517,14 +535,16 @@ function escapeHtml(str){
   return str.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-function registerSignature(slotMemberId, signedBy, date){
-  signatures.push({
+function registerSignature(slotMemberId, signedBy, date, reason){
+  const rec = {
     id: uid(),
     slotMemberId,
     signedBy,
     date,
     validUntil: cycleEnd(date)
-  });
+  };
+  if(reason) rec.reason = reason;
+  signatures.push(rec);
   save();
 }
 
@@ -537,6 +557,8 @@ function openSignSelf(memberId){
   document.getElementById('sheetTitle').textContent = `Registrar assinatura de ${member.name}`;
   document.getElementById('sheetSub').textContent = 'Informe a data em que a assinatura foi feita.';
   document.getElementById('signDateInput').value = todayISO();
+  document.getElementById('reasonRow').style.display = 'none';
+  document.getElementById('reasonInput').value = '';
   document.getElementById('candidateList').innerHTML = '';
 
   const confirmBtn = document.getElementById('confirmSelfBtn');
@@ -564,6 +586,8 @@ function openSubstitute(memberId){
     ? `Escolha a data e o substituto (sugestão por menor número de assinaturas, Equipe ${otherTeam}):`
     : `Não há integrantes cadastrados na Equipe ${otherTeam}.`;
   document.getElementById('signDateInput').value = todayISO();
+  document.getElementById('reasonRow').style.display = 'block';
+  document.getElementById('reasonInput').value = '';
   document.getElementById('confirmSelfBtn').style.display = 'none';
 
   const list = document.getElementById('candidateList');
@@ -580,8 +604,13 @@ function openSubstitute(memberId){
 }
 
 function confirmSubstitute(substituteId){
+  const reason = document.getElementById('reasonInput').value.trim();
+  if(!reason){
+    alert('Preencha a justificativa da substituição antes de confirmar.');
+    return;
+  }
   const date = document.getElementById('signDateInput').value || todayISO();
-  registerSignature(pendingSlotMember, substituteId, date);
+  registerSignature(pendingSlotMember, substituteId, date, reason);
   closeSheet();
   render();
 }
@@ -589,6 +618,7 @@ function confirmSubstitute(substituteId){
 function closeSheet(){
   document.getElementById('overlay').classList.remove('active');
   document.getElementById('confirmSelfBtn').style.display = 'none';
+  document.getElementById('reasonRow').style.display = 'none';
   pendingSlotMember = null;
 }
 document.getElementById('cancelSheet').onclick = closeSheet;
@@ -617,6 +647,7 @@ function renderHistorico(){
     return `<div class="hist-item">
       <div class="d">${fmtDate(s.date)}</div>
       <div><span class="who">${sub?escapeHtml(sub.name):'?'}</span> assinou no lugar de <span class="of">${orig?escapeHtml(orig.name):'?'}</span></div>
+      ${s.reason ? `<div style="margin-top:4px; color:var(--text-muted); font-size:0.82rem;">${escapeHtml(s.reason)}</div>` : ''}
     </div>`;
   }).join('');
 }
