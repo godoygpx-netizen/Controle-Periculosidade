@@ -351,6 +351,7 @@
       <label for="highlightCount">Destacar quantas pessoas</label>
       <input type="number" id="highlightCount" min="1" step="1" value="1">
     </div>
+    <button type="button" class="copy-btn" id="copyRankingBtn">Copiar ranking</button>
     <div id="rankWrap"></div>
   </div>
 
@@ -374,7 +375,7 @@
 </main>
 
 <footer style="padding:14px 16px 20px; text-align:center; color:var(--text-muted); font-family:'IBM Plex Mono'; font-size:0.68rem;">
-  v12 · atualizado em 13/09/2026
+  v13 · atualizado em 13/09/2026
 </footer>
 
 <div class="overlay" id="overlay">
@@ -829,9 +830,36 @@ function buildSummaryText(){
   return lines.join('\n');
 }
 
-document.getElementById('copySummaryBtn').addEventListener('click', async () => {
-  const btn = document.getElementById('copySummaryBtn');
-  const text = buildSummaryText();
+function buildRankingText(){
+  const today = new Date();
+  const dateStr = fmtDate(today.toISOString().slice(0,10));
+  const ranked = members
+    .map(m => ({...m, count: totalSignedBy(m.id), lastDate: lastSignedDateBy(m.id)}))
+    .sort((a,b) => {
+      if(a.count !== b.count) return a.count - b.count;
+      const da = a.lastDate || '0000-00-00';
+      const db = b.lastDate || '0000-00-00';
+      if(da !== db) return da.localeCompare(db);
+      return a.name.localeCompare(b.name, 'pt-BR');
+    });
+
+  let highlightN = parseInt(localStorage.getItem('peric_rank_highlight_n'), 10);
+  if(!highlightN || highlightN < 1) highlightN = 1;
+  if(highlightN > ranked.length) highlightN = ranked.length;
+
+  const proximos = ranked.slice(0, highlightN).map(m => m.name);
+
+  const lines = [`Ranking de assinaturas — ${dateStr}`, ''];
+  lines.push(`Próximos a assinar: ${proximos.join(', ')}`, '');
+  ranked.forEach((m, idx) => {
+    const tag = idx < highlightN ? ' ⭐ prioridade' : '';
+    const lastText = m.lastDate ? `última em ${fmtDate(m.lastDate)}` : 'nunca assinou';
+    lines.push(`${idx+1}º ${m.name} — ${m.count} assinatura${m.count===1?'':'s'} — ${lastText}${tag}`);
+  });
+  return lines.join('\n');
+}
+
+async function copyToClipboard(text, btn){
   let ok = false;
   try {
     await navigator.clipboard.writeText(text);
@@ -855,6 +883,14 @@ document.getElementById('copySummaryBtn').addEventListener('click', async () => 
     btn.textContent = original;
     btn.classList.remove('copied');
   }, 2000);
+}
+
+document.getElementById('copySummaryBtn').addEventListener('click', () => {
+  copyToClipboard(buildSummaryText(), document.getElementById('copySummaryBtn'));
+});
+
+document.getElementById('copyRankingBtn').addEventListener('click', () => {
+  copyToClipboard(buildRankingText(), document.getElementById('copyRankingBtn'));
 });
 
 function renderMembros(){
