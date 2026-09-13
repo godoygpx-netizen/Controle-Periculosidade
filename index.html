@@ -216,6 +216,10 @@
     padding:12px; background:var(--surface); border:1px solid var(--line);
   }
   .rank-config label{font-size:0.82rem; color:var(--text-muted); flex:1;}
+  .rank-config select{
+    background:var(--bg); border:1px solid var(--line-strong); color:var(--text);
+    padding:8px 6px; font-family:'IBM Plex Mono'; font-size:0.82rem; max-width:58%;
+  }
   .rank-config input[type=number]{
     width:64px; background:var(--bg); border:1px solid var(--line-strong);
     color:var(--text); padding:8px; font-family:'IBM Plex Mono'; font-size:0.95rem;
@@ -340,6 +344,10 @@
   </div>
 
   <div class="view" id="view-historico">
+    <div class="rank-config" id="histFilterRow">
+      <label for="histCycleFilter">Período (ciclo 16 a 15)</label>
+      <select id="histCycleFilter"></select>
+    </div>
     <div id="histWrap"></div>
   </div>
 
@@ -355,7 +363,7 @@
 </main>
 
 <footer style="padding:14px 16px 20px; text-align:center; color:var(--text-muted); font-family:'IBM Plex Mono'; font-size:0.68rem;">
-  v9 · atualizado em 13/09/2026
+  v10 · atualizado em 13/09/2026
 </footer>
 
 <div class="overlay" id="overlay">
@@ -737,11 +745,33 @@ function renderRanking(){
   </section>`;
 }
 
+// human-readable label for a cycle, given its end date (validUntil, the 15th)
+function cycleLabel(endISO){
+  const end = new Date(endISO + 'T00:00:00');
+  let sm = end.getMonth() - 1, sy = end.getFullYear();
+  if(sm < 0){ sm = 11; sy -= 1; }
+  const start = new Date(sy, sm, 16).toISOString().slice(0,10);
+  return `${fmtDate(start)} a ${fmtDate(endISO)}`;
+}
+
 function renderHistorico(){
   const wrap = document.getElementById('histWrap');
-  const all = [...signatures].sort((a,b) => b.date.localeCompare(a.date));
+  const filterEl = document.getElementById('histCycleFilter');
+
+  // opções de ciclo a partir dos períodos que já têm assinatura registrada
+  const cycles = [...new Set(signatures.map(s => s.validUntil))].sort((a,b) => b.localeCompare(a));
+  const currentValue = filterEl.value;
+  filterEl.innerHTML = `<option value="">Todos os períodos</option>` +
+    cycles.map(c => `<option value="${c}">${cycleLabel(c)}</option>`).join('');
+  if(cycles.includes(currentValue)) filterEl.value = currentValue;
+
+  const selected = filterEl.value;
+  const all = signatures
+    .filter(s => !selected || s.validUntil === selected)
+    .sort((a,b) => b.date.localeCompare(a.date));
+
   if(all.length === 0){
-    wrap.innerHTML = `<div class="empty">Nenhuma assinatura registrada ainda.</div>`;
+    wrap.innerHTML = `<div class="empty">${selected ? 'Nenhuma assinatura neste período.' : 'Nenhuma assinatura registrada ainda.'}</div>`;
     return;
   }
   wrap.innerHTML = all.map(s => {
@@ -794,6 +824,8 @@ document.getElementById('addMemberBtn').onclick = () => {
   nameInput.value = '';
   render();
 };
+
+document.getElementById('histCycleFilter').addEventListener('change', renderHistorico);
 
 document.getElementById('highlightCount').addEventListener('change', (e) => {
   let n = parseInt(e.target.value, 10);
