@@ -48,6 +48,11 @@
   }
   header.top h1{font-size:1.4rem; font-weight:600; letter-spacing:0.01em;}
   header.top p{margin:6px 0 0; color:var(--text-muted); font-size:0.88rem;}
+  .auth-btn{
+    flex-shrink:0; padding:7px 10px; background:none; border:1px solid var(--line-strong);
+    color:var(--text-muted); font-family:'IBM Plex Mono'; font-size:0.7rem; cursor:pointer; white-space:nowrap;
+  }
+  .auth-btn.is-editor{ border-color:var(--ok); color:var(--ok); }
   nav.tabs{
     display:flex;
     border-bottom:1px solid var(--line);
@@ -314,6 +319,15 @@
     font-size:0.88rem;
     resize:vertical;
   }
+  .sheet input[type=email], .sheet input[type=password]{
+    width:100%;
+    background:var(--bg);
+    border:1px solid var(--line-strong);
+    color:var(--text);
+    padding:10px;
+    font-family:'IBM Plex Sans', sans-serif;
+    font-size:0.92rem;
+  }
   .sheet button.confirm{
     width:100%; padding:10px; background:var(--amber); border:none;
     color:#14171A; font-weight:600; font-family:'Space Grotesk'; margin-top:4px;
@@ -327,8 +341,13 @@
 <body>
 
 <header class="top">
-  <h1>Controle de Periculosidade</h1>
-  <p id="headerSub">carregando…</p>
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
+    <div>
+      <h1>Controle de Periculosidade</h1>
+      <p id="headerSub">carregando…</p>
+    </div>
+    <button type="button" id="authBtn" class="auth-btn">Entrar</button>
+  </div>
 </header>
 
 <nav class="tabs">
@@ -375,7 +394,7 @@
 </main>
 
 <footer style="padding:14px 16px 20px; text-align:center; color:var(--text-muted); font-family:'IBM Plex Mono'; font-size:0.68rem;">
-  v13 · atualizado em 13/09/2026
+  v14 · dados compartilhados (Firebase) · atualizado em 13/09/2026
 </footer>
 
 <div class="overlay" id="overlay">
@@ -396,20 +415,50 @@
   </div>
 </div>
 
-<script>
-const STORE_MEMBERS = 'peric_members_v1';
-const STORE_SIGNATURES = 'peric_signatures_v1';
+<div class="overlay" id="authOverlay">
+  <div class="sheet">
+    <h3>Entrar como editor</h3>
+    <p class="sub">Só quem tiver a senha consegue editar. Todo mundo continua podendo visualizar sem entrar.</p>
+    <div class="date-row">
+      <label>E-mail</label>
+      <input type="email" id="authEmail" autocomplete="username">
+    </div>
+    <div class="date-row">
+      <label>Senha</label>
+      <input type="password" id="authPassword" autocomplete="current-password">
+    </div>
+    <button class="confirm" id="authSubmitBtn">Entrar</button>
+    <button class="cancel" id="authCancelBtn">Cancelar</button>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {
+  getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import {
+  getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDPAhGAiKMaW15x2HLMP0W2HDR1Gu6HJcw",
+  authDomain: "controle-periculosidade.firebaseapp.com",
+  projectId: "controle-periculosidade",
+  storageBucket: "controle-periculosidade.firebasestorage.app",
+  messagingSenderId: "1000356531140",
+  appId: "1:1000356531140:web:a04b312bd05b79e72f3291",
+  measurementId: "G-KG14Z8W1CZ"
+};
+const fbApp = initializeApp(firebaseConfig);
+const db = getFirestore(fbApp);
+const auth = getAuth(fbApp);
+
 const CYCLE_START_DAY = 16; // ciclo vai do dia 16 ao dia 15 do mês seguinte
 
-let members = JSON.parse(localStorage.getItem(STORE_MEMBERS) || '[]');
-let signatures = JSON.parse(localStorage.getItem(STORE_SIGNATURES) || '[]');
-
-function save(){
-  localStorage.setItem(STORE_MEMBERS, JSON.stringify(members));
-  localStorage.setItem(STORE_SIGNATURES, JSON.stringify(signatures));
-}
-
-function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+let members = [];
+let signatures = [];
+let isEditor = false;
 
 function todayISO(){ return new Date().toISOString().slice(0,10); }
 
@@ -474,7 +523,7 @@ function renderHeader(){
   if(members.length === 0){
     sub.textContent = 'nenhum integrante cadastrado ainda';
   } else {
-    sub.textContent = `${members.length} integrantes · ciclo do dia 16 ao dia 15`;
+    sub.textContent = `${members.length} integrantes · ciclo do dia 16 ao dia 15${isEditor ? '' : ' · somente visualização'}`;
   }
 }
 
@@ -504,10 +553,10 @@ function memberRowHtml(m){
       </div>
       <div class="row-actions">
         <span class="status-pill ${pillClass}">${pillText}</span>
-        ${st.rec ? `<button class="row-edit" onclick="openEditRecord('${st.rec.id}')">editar</button>` : ''}
+        ${isEditor && st.rec ? `<button class="row-edit" onclick="openEditRecord('${st.rec.id}')">editar</button>` : ''}
       </div>
     </div>
-    ${needsAction ? `
+    ${needsAction && isEditor ? `
     <div class="member-row" style="border-top:none; padding-top:0;">
       <div></div>
       <div class="row-actions">
@@ -560,17 +609,10 @@ function escapeHtml(str){
   return str.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-function registerSignature(slotMemberId, signedBy, date, reason){
-  const rec = {
-    id: uid(),
-    slotMemberId,
-    signedBy,
-    date,
-    validUntil: cycleEnd(date)
-  };
+async function registerSignature(slotMemberId, signedBy, date, reason){
+  const rec = { slotMemberId, signedBy, date, validUntil: cycleEnd(date) };
   if(reason) rec.reason = reason;
-  signatures.push(rec);
-  save();
+  await addDoc(collection(db, 'signatures'), rec);
 }
 
 let pendingSlotMember = null;
@@ -671,31 +713,27 @@ function openEditRecord(recordId){
   const confirmBtn = document.getElementById('confirmSelfBtn');
   confirmBtn.style.display = 'block';
   confirmBtn.textContent = 'Salvar alterações';
-  confirmBtn.onclick = () => {
+  confirmBtn.onclick = async () => {
     const date = document.getElementById('signDateInput').value || rec.date;
+    const updates = { date, validUntil: cycleEnd(date) };
     if(isSubstitute){
       const reason = document.getElementById('reasonInput').value.trim();
       if(!reason){
         alert('Preencha a justificativa da substituição antes de salvar.');
         return;
       }
-      rec.reason = reason;
+      updates.reason = reason;
     }
-    rec.date = date;
-    rec.validUntil = cycleEnd(date);
-    save();
+    await updateDoc(doc(db, 'signatures', recordId), updates);
     closeSheet();
-    render();
   };
 
   document.getElementById('overlay').classList.add('active');
 }
 
-function deleteRecord(recordId){
+async function deleteRecord(recordId){
   if(!confirm('Excluir esta assinatura? Essa ação não pode ser desfeita.')) return;
-  signatures = signatures.filter(s => s.id !== recordId);
-  save();
-  render();
+  await deleteDoc(doc(db, 'signatures', recordId));
 }
 
 function closeSheet(){
@@ -798,10 +836,11 @@ function renderHistorico(){
       <div class="d">${fmtDate(s.date)}</div>
       <div>${line}</div>
       ${s.reason ? `<div style="margin-top:4px; color:var(--text-muted); font-size:0.82rem;">${escapeHtml(s.reason)}</div>` : ''}
+      ${isEditor ? `
       <div class="hist-actions">
         <button onclick="openEditRecord('${s.id}')">editar</button>
         <button class="del" onclick="deleteRecord('${s.id}')">excluir</button>
-      </div>
+      </div>` : ''}
     </div>`;
   }).join('');
 }
@@ -903,26 +942,22 @@ function renderMembros(){
   wrap.innerHTML = all.map(m => `
     <div class="member-manage-row">
       <span>${escapeHtml(m.name)}</span>
-      <button class="del" onclick="removeMember('${m.id}')">remover</button>
+      ${isEditor ? `<button class="del" onclick="removeMember('${m.id}')">remover</button>` : ''}
     </div>
   `).join('');
 }
 
-function removeMember(id){
+async function removeMember(id){
   if(!confirm('Remover este integrante? O histórico de assinaturas dele será mantido.')) return;
-  members = members.filter(m => m.id !== id);
-  save();
-  render();
+  await deleteDoc(doc(db, 'members', id));
 }
 
-document.getElementById('addMemberBtn').onclick = () => {
+document.getElementById('addMemberBtn').onclick = async () => {
   const nameInput = document.getElementById('newName');
   const name = nameInput.value.trim();
   if(!name){ alert('Digite o nome do integrante.'); return; }
-  members.push({ id: uid(), name });
-  save();
+  await addDoc(collection(db, 'members'), { name });
   nameInput.value = '';
-  render();
 };
 
 document.getElementById('histCycleFilter').addEventListener('change', renderHistorico);
@@ -943,6 +978,67 @@ document.querySelectorAll('nav.tabs button').forEach(btn => {
     document.getElementById('view-' + btn.dataset.view).classList.add('active');
   });
 });
+
+// login como editor (todo mundo mais só visualiza)
+const authBtn = document.getElementById('authBtn');
+const authOverlay = document.getElementById('authOverlay');
+
+function applyEditorUI(){
+  authBtn.textContent = isEditor ? 'Sair (editor)' : 'Entrar';
+  authBtn.classList.toggle('is-editor', isEditor);
+  const addForm = document.querySelector('.add-form');
+  if(addForm) addForm.style.display = isEditor ? 'flex' : 'none';
+}
+applyEditorUI();
+
+authBtn.addEventListener('click', () => {
+  if(isEditor){
+    signOut(auth);
+  } else {
+    document.getElementById('authEmail').value = '';
+    document.getElementById('authPassword').value = '';
+    authOverlay.classList.add('active');
+  }
+});
+document.getElementById('authCancelBtn').onclick = () => authOverlay.classList.remove('active');
+authOverlay.addEventListener('click', (e) => { if(e.target.id === 'authOverlay') authOverlay.classList.remove('active'); });
+document.getElementById('authSubmitBtn').onclick = async () => {
+  const email = document.getElementById('authEmail').value.trim();
+  const password = document.getElementById('authPassword').value;
+  if(!email || !password){ alert('Preencha e-mail e senha.'); return; }
+  try{
+    await signInWithEmailAndPassword(auth, email, password);
+    authOverlay.classList.remove('active');
+  } catch(e){
+    alert('E-mail ou senha incorretos.');
+  }
+};
+
+onAuthStateChanged(auth, (user) => {
+  isEditor = !!user;
+  applyEditorUI();
+  render();
+});
+
+// dados em tempo real do Firestore — qualquer alteração (sua ou de outra
+// pessoa com acesso de editor) atualiza a tela na hora
+onSnapshot(collection(db, 'members'), (snap) => {
+  members = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  render();
+}, (err) => console.error('Erro ao ler membros:', err));
+
+onSnapshot(collection(db, 'signatures'), (snap) => {
+  signatures = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  render();
+}, (err) => console.error('Erro ao ler assinaturas:', err));
+
+// funções referenciadas via onclick="" no HTML gerado precisam estar
+// no escopo global, já que este script agora é um module
+window.openSignSelf = openSignSelf;
+window.openSubstitute = openSubstitute;
+window.openEditRecord = openEditRecord;
+window.deleteRecord = deleteRecord;
+window.removeMember = removeMember;
 
 render();
 </script>
