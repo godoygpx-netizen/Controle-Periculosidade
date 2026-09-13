@@ -355,7 +355,7 @@
 </main>
 
 <footer style="padding:14px 16px 20px; text-align:center; color:var(--text-muted); font-family:'IBM Plex Mono'; font-size:0.68rem;">
-  v8 · atualizado em 13/09/2026
+  v9 · atualizado em 13/09/2026
 </footer>
 
 <div class="overlay" id="overlay">
@@ -424,6 +424,13 @@ function latestFor(memberId){
 // total times a person has personally signed (own slot or as substitute) — used for fair rotation
 function totalSignedBy(memberId){
   return signatures.filter(s => s.signedBy === memberId).length;
+}
+
+// most recent date this person actually signed (own or as substitute); null if never
+function lastSignedDateBy(memberId){
+  const recs = signatures.filter(s => s.signedBy === memberId);
+  if(recs.length === 0) return null;
+  return recs.reduce((max, r) => r.date > max ? r.date : max, recs[0].date);
 }
 
 function statusFor(memberId){
@@ -578,8 +585,14 @@ function openSubstitute(memberId){
   editingRecordId = null;
   const member = members.find(m => m.id === memberId);
   const candidates = members.filter(m => m.id !== memberId)
-    .map(m => ({...m, count: totalSignedBy(m.id)}))
-    .sort((a,b) => a.count - b.count || a.name.localeCompare(b.name));
+    .map(m => ({...m, count: totalSignedBy(m.id), lastDate: lastSignedDateBy(m.id)}))
+    .sort((a,b) => {
+      if(a.count !== b.count) return a.count - b.count;
+      const da = a.lastDate || '0000-00-00';
+      const db = b.lastDate || '0000-00-00';
+      if(da !== db) return da.localeCompare(db);
+      return a.name.localeCompare(b.name, 'pt-BR');
+    });
 
   document.getElementById('sheetTitle').textContent = `Substituir ${member.name}`;
   document.getElementById('sheetSub').textContent = candidates.length
@@ -690,8 +703,14 @@ function renderRanking(){
     return;
   }
   const ranked = members
-    .map(m => ({...m, count: totalSignedBy(m.id)}))
-    .sort((a,b) => a.count - b.count || a.name.localeCompare(b.name, 'pt-BR'));
+    .map(m => ({...m, count: totalSignedBy(m.id), lastDate: lastSignedDateBy(m.id)}))
+    .sort((a,b) => {
+      if(a.count !== b.count) return a.count - b.count;
+      const da = a.lastDate || '0000-00-00';
+      const db = b.lastDate || '0000-00-00';
+      if(da !== db) return da.localeCompare(db);
+      return a.name.localeCompare(b.name, 'pt-BR');
+    });
 
   let highlightN = parseInt(localStorage.getItem('peric_rank_highlight_n'), 10);
   if(!highlightN || highlightN < 1) highlightN = 1;
@@ -708,7 +727,9 @@ function renderRanking(){
         <div class="rank-pos">${idx+1}º</div>
         <div class="rank-info">
           <div class="nm">${escapeHtml(m.name)}</div>
-          ${idx < highlightN ? `<div class="meta" style="font-size:0.72rem; color:var(--amber); font-family:'IBM Plex Mono'; margin-top:2px;">prioridade</div>` : ''}
+          <div class="meta" style="font-size:0.72rem; color:${idx < highlightN ? 'var(--amber)' : 'var(--text-muted)'}; font-family:'IBM Plex Mono'; margin-top:2px;">
+            ${idx < highlightN ? 'prioridade · ' : ''}${m.lastDate ? `última em ${fmtDate(m.lastDate)}` : 'nunca assinou'}
+          </div>
         </div>
         <div class="rank-count">${m.count}</div>
       </div>
