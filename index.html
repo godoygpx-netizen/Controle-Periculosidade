@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Controle de Periculosidade</title>
+<meta name="theme-color" content="#14171A">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#14171A;
+    --surface:#1B1F23;
+    --surface-raised:#20252A;
+    --line: rgba(237,234,227,0.12);
+    --line-strong: rgba(237,234,227,0.22);
+    --text:#EDEAE3;
+    --text-muted:#9AA0A6;
+    --amber:#E8A33D;
+    --amber-dim: rgba(232,163,61,0.16);
+    --steel:#5B8AA6;
+    --steel-dim: rgba(91,138,166,0.16);
+    --ok:#4E8B7B;
+    --ok-dim: rgba(78,139,123,0.16);
+    --warn:#C1503A;
+    --warn-dim: rgba(193,80,58,0.16);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:'IBM Plex Sans', sans-serif;
+    font-size:16px;
+    line-height:1.45;
+    -webkit-font-smoothing:antialiased;
+    padding-bottom:72px;
+  }
+  h1,h2,h3{font-family:'Space Grotesk', sans-serif; margin:0;}
+  .mono{font-family:'IBM Plex Mono', monospace;}
+  header.top{
+    padding:22px 18px 16px;
+    border-bottom:1px solid var(--line);
+  }
+  header.top h1{font-size:1.4rem; font-weight:600; letter-spacing:0.01em;}
+  header.top p{margin:6px 0 0; color:var(--text-muted); font-size:0.88rem;}
+  nav.tabs{
+    display:flex;
+    border-bottom:1px solid var(--line);
+    position:sticky; top:0; background:var(--bg); z-index:5;
+  }
+  nav.tabs button{
+    flex:1;
+    background:none;
+    border:none;
+    color:var(--text-muted);
+    font-family:'IBM Plex Sans', sans-serif;
+    font-size:0.86rem;
+    padding:13px 6px;
+    border-bottom:2px solid transparent;
+    cursor:pointer;
+  }
+  nav.tabs button.active{
+    color:var(--text);
+    border-bottom-color:var(--amber);
+  }
+  main{padding:16px 14px 8px;}
+  .view{display:none;}
+  .view.active{display:block;}
+
+  .summary-row{
+    display:flex;
+    gap:10px;
+    margin-bottom:18px;
+    overflow-x:auto;
+  }
+  .summary-card{
+    flex:1;
+    min-width:96px;
+    background:var(--surface);
+    border:1px solid var(--line);
+    padding:12px 12px;
+  }
+  .summary-card .num{font-family:'IBM Plex Mono',monospace; font-size:1.5rem; font-weight:600;}
+  .summary-card .label{font-size:0.72rem; color:var(--text-muted); margin-top:2px;}
+  .summary-card.warn .num{color:var(--warn);}
+  .summary-card.ok .num{color:var(--ok);}
+
+  section.team{
+    margin-bottom:22px;
+    border:1px solid var(--line);
+  }
+  .team-tab{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:10px 12px;
+    border-bottom:1px solid var(--line);
+  }
+  .team-tab .name{font-family:'Space Grotesk'; font-weight:600; font-size:0.98rem;}
+  .team-tab .count{font-family:'IBM Plex Mono'; font-size:0.78rem; color:var(--text-muted);}
+  .team.A .team-tab{border-left:4px solid var(--amber);}
+  .team.B .team-tab{border-left:4px solid var(--steel);}
+
+  .member-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:11px 12px;
+    border-bottom:1px solid var(--line);
+    gap:8px;
+  }
+  .member-row:last-child{border-bottom:none;}
+  .member-info{min-width:0;}
+  .member-info .nm{font-size:0.94rem; font-weight:500;}
+  .member-info .meta{font-size:0.74rem; color:var(--text-muted); font-family:'IBM Plex Mono'; margin-top:2px;}
+  .member-info .meta .covered{color:var(--steel);}
+  .status-pill{
+    font-family:'IBM Plex Mono';
+    font-size:0.68rem;
+    letter-spacing:0.02em;
+    padding:3px 8px;
+    white-space:nowrap;
+    border:1px solid transparent;
+  }
+  .status-pill.ok{color:var(--ok); background:var(--ok-dim); border-color:rgba(78,139,123,0.3);}
+  .status-pill.warn{color:var(--warn); background:var(--warn-dim); border-color:rgba(193,80,58,0.3);}
+  .status-pill.none{color:var(--text-muted); background:rgba(154,160,166,0.1); border-color:var(--line);}
+
+  .row-actions{display:flex; gap:6px; flex-shrink:0;}
+  button.btn{
+    font-family:'IBM Plex Sans';
+    font-size:0.76rem;
+    padding:6px 9px;
+    background:none;
+    border:1px solid var(--line-strong);
+    color:var(--text);
+    cursor:pointer;
+  }
+  button.btn.primary{border-color:var(--amber); color:var(--amber);}
+  button.btn.sub{border-color:var(--warn); color:var(--warn);}
+  button.btn:active{opacity:0.7;}
+
+  .empty{
+    padding:26px 14px;
+    text-align:center;
+    color:var(--text-muted);
+    font-size:0.9rem;
+    border:1px dashed var(--line-strong);
+  }
+
+  /* Members management */
+  .add-form{
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+    padding:14px;
+    background:var(--surface);
+    border:1px solid var(--line);
+    margin-bottom:18px;
+  }
+  .add-form label{font-size:0.78rem; color:var(--text-muted);}
+  .add-form input[type=text]{
+    background:var(--bg);
+    border:1px solid var(--line-strong);
+    color:var(--text);
+    padding:9px 10px;
+    font-family:'IBM Plex Sans';
+    font-size:0.92rem;
+  }
+  .team-select{display:flex; gap:8px;}
+  .team-select button{
+    flex:1;
+    padding:9px;
+    background:var(--bg);
+    border:1px solid var(--line-strong);
+    color:var(--text-muted);
+    font-family:'IBM Plex Sans';
+    font-size:0.84rem;
+  }
+  .team-select button.picked-A{border-color:var(--amber); color:var(--amber);}
+  .team-select button.picked-B{border-color:var(--steel); color:var(--steel);}
+  .add-form button.submit{
+    background:var(--amber);
+    border:none;
+    color:#14171A;
+    padding:10px;
+    font-weight:600;
+    font-family:'Space Grotesk';
+  }
+  .member-manage-row{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:10px 12px; border-bottom:1px solid var(--line);
+  }
+  .member-manage-row .del{color:var(--warn); background:none; border:none; font-family:'IBM Plex Mono'; font-size:0.78rem; cursor:pointer;}
+
+  /* History */
+  .hist-item{
+    padding:11px 12px;
+    border-bottom:1px solid var(--line);
+    font-size:0.86rem;
+  }
+  .hist-item .d{font-family:'IBM Plex Mono'; font-size:0.72rem; color:var(--text-muted); margin-bottom:2px;}
+  .hist-item .who{color:var(--steel);}
+  .hist-item .of{color:var(--amber);}
+
+  /* Modal for substitute suggestion */
+  .overlay{
+    position:fixed; inset:0; background:rgba(0,0,0,0.55);
+    display:none; align-items:flex-end; justify-content:center; z-index:20;
+  }
+  .overlay.active{display:flex;}
+  .sheet{
+    width:100%; max-width:480px;
+    background:var(--surface-raised);
+    border-top:1px solid var(--line-strong);
+    padding:18px 16px 22px;
+  }
+  .sheet h3{font-size:1.02rem; margin-bottom:4px;}
+  .sheet p.sub{color:var(--text-muted); font-size:0.82rem; margin:0 0 14px;}
+  .candidate{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:10px 12px; border:1px solid var(--line); margin-bottom:8px; cursor:pointer;
+  }
+  .candidate.top{border-color:var(--amber);}
+  .candidate .c-name{font-size:0.9rem;}
+  .candidate .c-count{font-family:'IBM Plex Mono'; font-size:0.76rem; color:var(--text-muted);}
+  .candidate.top .c-count{color:var(--amber);}
+  .sheet .cancel{
+    width:100%; margin-top:8px; padding:10px; background:none;
+    border:1px solid var(--line-strong); color:var(--text-muted); font-family:'IBM Plex Sans';
+  }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <h1>Controle de Periculosidade</h1>
+  <p id="headerSub">carregando…</p>
+</header>
+
+<nav class="tabs">
+  <button data-view="painel" class="active">Painel</button>
+  <button data-view="historico">Histórico</button>
+  <button data-view="membros">Membros</button>
+</nav>
+
+<main>
+
+  <div class="view active" id="view-painel">
+    <div class="summary-row" id="summaryRow"></div>
+    <div id="teamsWrap"></div>
+  </div>
+
+  <div class="view" id="view-historico">
+    <div id="histWrap"></div>
+  </div>
+
+  <div class="view" id="view-membros">
+    <div class="add-form">
+      <label>Nome do integrante</label>
+      <input type="text" id="newName" placeholder="Ex.: Carlos Andrade">
+      <label>Equipe</label>
+      <div class="team-select">
+        <button type="button" id="pickA" data-team="A">Equipe A</button>
+        <button type="button" id="pickB" data-team="B">Equipe B</button>
+      </div>
+      <button type="button" class="submit" id="addMemberBtn">Cadastrar</button>
+    </div>
+    <div id="manageWrap"></div>
+  </div>
+
+</main>
+
+<div class="overlay" id="overlay">
+  <div class="sheet">
+    <h3 id="sheetTitle"></h3>
+    <p class="sub" id="sheetSub"></p>
+    <div id="candidateList"></div>
+    <button class="cancel" id="cancelSheet">Cancelar</button>
+  </div>
+</div>
+
+<script>
+const STORE_MEMBERS = 'peric_members_v1';
+const STORE_SIGNATURES = 'peric_signatures_v1';
+const VALID_DAYS = 30;
+
+let members = JSON.parse(localStorage.getItem(STORE_MEMBERS) || '[]');
+let signatures = JSON.parse(localStorage.getItem(STORE_SIGNATURES) || '[]');
+let pickedTeam = null;
+
+function save(){
+  localStorage.setItem(STORE_MEMBERS, JSON.stringify(members));
+  localStorage.setItem(STORE_SIGNATURES, JSON.stringify(signatures));
+}
+
+function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+
+function todayISO(){ return new Date().toISOString().slice(0,10); }
+
+function addDays(iso, days){
+  const d = new Date(iso + 'T00:00:00');
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0,10);
+}
+
+function fmtDate(iso){
+  if(!iso) return '—';
+  const [y,m,d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+// latest signature record for a given slot member
+function latestFor(memberId){
+  const recs = signatures.filter(s => s.slotMemberId === memberId)
+    .sort((a,b) => b.date.localeCompare(a.date));
+  return recs[0] || null;
+}
+
+// total times a person has personally signed (own slot or as substitute) — used for fair rotation
+function totalSignedBy(memberId){
+  return signatures.filter(s => s.signedBy === memberId).length;
+}
+
+function statusFor(memberId){
+  const rec = latestFor(memberId);
+  const today = todayISO();
+  if(!rec) return {state:'none', rec:null};
+  if(rec.validUntil >= today) return {state:'ok', rec};
+  return {state:'warn', rec};
+}
+
+function render(){
+  renderHeader();
+  renderPainel();
+  renderHistorico();
+  renderMembros();
+}
+
+function renderHeader(){
+  const sub = document.getElementById('headerSub');
+  if(members.length === 0){
+    sub.textContent = 'nenhum integrante cadastrado ainda';
+  } else {
+    sub.textContent = `${members.length} integrantes · equipe A e equipe B · ciclo de ${VALID_DAYS} dias`;
+  }
+}
+
+function renderPainel(){
+  const summaryRow = document.getElementById('summaryRow');
+  const teamsWrap = document.getElementById('teamsWrap');
+
+  if(members.length === 0){
+    summaryRow.innerHTML = '';
+    teamsWrap.innerHTML = `<div class="empty">Cadastre os integrantes das duas equipes na aba <strong>Membros</strong> para começar o controle.</div>`;
+    return;
+  }
+
+  let okCount=0, warnCount=0, noneCount=0, subCount=0;
+  members.forEach(m => {
+    const st = statusFor(m.id).state;
+    if(st==='ok') okCount++; else if(st==='warn') warnCount++; else noneCount++;
+  });
+  const thisCycleSubs = signatures.filter(s => s.signedBy !== s.slotMemberId && s.date === lastSubDateOrToday());
+  subCount = signatures.filter(s => s.signedBy !== s.slotMemberId).length;
+
+  summaryRow.innerHTML = `
+    <div class="summary-card ok"><div class="num mono">${okCount}</div><div class="label">assinaturas válidas</div></div>
+    <div class="summary-card warn"><div class="num mono">${warnCount+noneCount}</div><div class="label">pendentes / vencidas</div></div>
+    <div class="summary-card"><div class="num mono">${subCount}</div><div class="label">substituições no histórico</div></div>
+  `;
+
+  teamsWrap.innerHTML = '';
+  ['A','B'].forEach(team => {
+    const teamMembers = members.filter(m => m.team === team);
+    const section = document.createElement('section');
+    section.className = `team ${team}`;
+    let rows = '';
+    if(teamMembers.length === 0){
+      rows = `<div class="empty" style="border:none;">sem integrantes nesta equipe</div>`;
+    } else {
+      teamMembers.forEach(m => {
+        const st = statusFor(m.id);
+        let pillClass = 'none', pillText = 'sem registro';
+        let metaLine = '';
+        if(st.state === 'ok'){
+          pillClass='ok'; pillText = `válida até ${fmtDate(st.rec.validUntil)}`;
+          if(st.rec.signedBy !== m.id){
+            const sub = members.find(x=>x.id===st.rec.signedBy);
+            metaLine = `<span class="covered">coberta por ${sub ? sub.name : 'substituto'}</span>`;
+          } else {
+            metaLine = `assinou em ${fmtDate(st.rec.date)}`;
+          }
+        } else if(st.state === 'warn'){
+          pillClass='warn'; pillText = `vencida desde ${fmtDate(st.rec.validUntil)}`;
+        } else {
+          pillClass='none'; pillText = 'sem registro';
+        }
+        const needsAction = st.state !== 'ok';
+        rows += `
+          <div class="member-row">
+            <div class="member-info">
+              <div class="nm">${escapeHtml(m.name)}</div>
+              <div class="meta">${metaLine || '&nbsp;'}</div>
+            </div>
+            <div class="row-actions">
+              <span class="status-pill ${pillClass}">${pillText}</span>
+            </div>
+          </div>
+          ${needsAction ? `
+          <div class="member-row" style="border-top:none; padding-top:0;">
+            <div></div>
+            <div class="row-actions">
+              <button class="btn primary" onclick="signSelf('${m.id}')">Assinou</button>
+              <button class="btn sub" onclick="openSubstitute('${m.id}')">Substituir</button>
+            </div>
+          </div>` : ''}
+        `;
+      });
+    }
+    section.innerHTML = `
+      <div class="team-tab">
+        <span class="name">Equipe ${team}</span>
+        <span class="count mono">${teamMembers.length} integrantes</span>
+      </div>
+      ${rows}
+    `;
+    teamsWrap.appendChild(section);
+  });
+}
+
+function lastSubDateOrToday(){ return todayISO(); }
+
+function escapeHtml(str){
+  return str.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function signSelf(memberId){
+  const date = todayISO();
+  signatures.push({
+    id: uid(),
+    slotMemberId: memberId,
+    signedBy: memberId,
+    date,
+    validUntil: addDays(date, VALID_DAYS)
+  });
+  save();
+  render();
+}
+
+let pendingSlotMember = null;
+
+function openSubstitute(memberId){
+  pendingSlotMember = memberId;
+  const member = members.find(m => m.id === memberId);
+  const otherTeam = member.team === 'A' ? 'B' : 'A';
+  const candidates = members.filter(m => m.team === otherTeam)
+    .map(m => ({...m, count: totalSignedBy(m.id)}))
+    .sort((a,b) => a.count - b.count || a.name.localeCompare(b.name));
+
+  document.getElementById('sheetTitle').textContent = `Substituir ${member.name}`;
+  document.getElementById('sheetSub').textContent = candidates.length
+    ? `Sugestão por menor número de assinaturas já realizadas (Equipe ${otherTeam}):`
+    : `Não há integrantes cadastrados na Equipe ${otherTeam}.`;
+
+  const list = document.getElementById('candidateList');
+  list.innerHTML = '';
+  candidates.forEach((c, idx) => {
+    const div = document.createElement('div');
+    div.className = 'candidate' + (idx===0 ? ' top' : '');
+    div.innerHTML = `<span class="c-name">${escapeHtml(c.name)}</span><span class="c-count mono">${c.count} assinatura${c.count===1?'':'s'}</span>`;
+    div.onclick = () => confirmSubstitute(c.id);
+    list.appendChild(div);
+  });
+
+  document.getElementById('overlay').classList.add('active');
+}
+
+function confirmSubstitute(substituteId){
+  const date = todayISO();
+  signatures.push({
+    id: uid(),
+    slotMemberId: pendingSlotMember,
+    signedBy: substituteId,
+    date,
+    validUntil: addDays(date, VALID_DAYS)
+  });
+  save();
+  closeSheet();
+  render();
+}
+
+function closeSheet(){
+  document.getElementById('overlay').classList.remove('active');
+  pendingSlotMember = null;
+}
+document.getElementById('cancelSheet').onclick = closeSheet;
+document.getElementById('overlay').onclick = (e) => { if(e.target.id==='overlay') closeSheet(); };
+
+function renderHistorico(){
+  const wrap = document.getElementById('histWrap');
+  const subs = signatures.filter(s => s.signedBy !== s.slotMemberId)
+    .sort((a,b) => b.date.localeCompare(a.date));
+  if(subs.length === 0){
+    wrap.innerHTML = `<div class="empty">Nenhuma substituição registrada ainda.</div>`;
+    return;
+  }
+  wrap.innerHTML = subs.map(s => {
+    const sub = members.find(m=>m.id===s.signedBy);
+    const orig = members.find(m=>m.id===s.slotMemberId);
+    return `<div class="hist-item">
+      <div class="d">${fmtDate(s.date)}</div>
+      <div><span class="who">${sub?escapeHtml(sub.name):'?'}</span> assinou no lugar de <span class="of">${orig?escapeHtml(orig.name):'?'}</span></div>
+    </div>`;
+  }).join('');
+}
+
+function renderMembros(){
+  const wrap = document.getElementById('manageWrap');
+  if(members.length === 0){
+    wrap.innerHTML = `<div class="empty">Nenhum integrante cadastrado.</div>`;
+    return;
+  }
+  let html = '';
+  ['A','B'].forEach(team => {
+    const teamMembers = members.filter(m=>m.team===team);
+    html += `<div style="margin:16px 0 6px; font-family:'Space Grotesk'; font-size:0.86rem; color:var(--text-muted);">Equipe ${team} · ${teamMembers.length}/6</div>`;
+    teamMembers.forEach(m => {
+      html += `<div class="member-manage-row">
+        <span>${escapeHtml(m.name)}</span>
+        <button class="del" onclick="removeMember('${m.id}')">remover</button>
+      </div>`;
+    });
+  });
+  wrap.innerHTML = html;
+}
+
+function removeMember(id){
+  if(!confirm('Remover este integrante? O histórico de assinaturas dele será mantido.')) return;
+  members = members.filter(m => m.id !== id);
+  save();
+  render();
+}
+
+document.getElementById('pickA').onclick = () => pickTeam('A');
+document.getElementById('pickB').onclick = () => pickTeam('B');
+function pickTeam(t){
+  pickedTeam = t;
+  document.getElementById('pickA').classList.toggle('picked-A', t==='A');
+  document.getElementById('pickB').classList.toggle('picked-B', t==='B');
+}
+
+document.getElementById('addMemberBtn').onclick = () => {
+  const nameInput = document.getElementById('newName');
+  const name = nameInput.value.trim();
+  if(!name){ alert('Digite o nome do integrante.'); return; }
+  if(!pickedTeam){ alert('Escolha a equipe (A ou B).'); return; }
+  members.push({ id: uid(), name, team: pickedTeam });
+  save();
+  nameInput.value = '';
+  pickedTeam = null;
+  document.getElementById('pickA').classList.remove('picked-A');
+  document.getElementById('pickB').classList.remove('picked-B');
+  render();
+};
+
+// tab navigation
+document.querySelectorAll('nav.tabs button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('view-' + btn.dataset.view).classList.add('active');
+  });
+});
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('service-worker.js').catch(()=>{});
+  });
+}
+
+render();
+</script>
+</body>
+</html>
