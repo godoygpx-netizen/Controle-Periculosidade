@@ -482,7 +482,7 @@
 </div>
 
 <footer style="padding:14px 16px 20px; text-align:center; color:var(--text-muted); font-family:'IBM Plex Mono'; font-size:0.68rem;">
-  v43 · dados compartilhados (Firebase) · atualizado em 14/09/2026
+  v44 · dados compartilhados (Firebase) · atualizado em 14/09/2026
 </footer>
 
 <div class="overlay" id="overlay">
@@ -1037,13 +1037,16 @@ function renderRanking(){
   document.getElementById('splitTechCheckbox').checked = splitTech;
 
   const highlighted = computeHighlighted(ranked, highlightN, splitTech);
+  const displayRanked = splitTech
+    ? [...ranked.filter(m => highlighted.has(m.id)), ...ranked.filter(m => !highlighted.has(m.id))]
+    : ranked;
 
   wrap.innerHTML = `<section class="team">
     <div class="team-tab" style="border-left:4px solid var(--amber);">
       <span class="name">Prioridade para a próxima assinatura</span>
       <span class="count mono">${ranked.length} integrantes</span>
     </div>
-    ${ranked.map((m, idx) => {
+    ${displayRanked.map((m, idx) => {
       const isHi = highlighted.has(m.id);
       const techLabel = m.tech === 'mecanica' ? 'Mecânica' : m.tech === 'eletrica' ? 'Elétrica' : null;
       return `
