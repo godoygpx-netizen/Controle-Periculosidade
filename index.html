@@ -64,8 +64,8 @@
     border:none;
     color:var(--text-muted);
     font-family:'IBM Plex Sans', sans-serif;
-    font-size:0.78rem;
-    padding:13px 4px;
+    font-size:0.7rem;
+    padding:13px 2px;
     border-bottom:2px solid transparent;
     cursor:pointer;
   }
@@ -193,7 +193,7 @@
     margin-bottom:18px;
   }
   .add-form label{font-size:0.78rem; color:var(--text-muted);}
-  .add-form input[type=text]{
+  .add-form input[type=text], .add-form input[type=email], .add-form input[type=password]{
     background:var(--bg);
     border:1px solid var(--line-strong);
     color:var(--text);
@@ -357,6 +357,7 @@
   <button data-view="ranking">Ranking</button>
   <button data-view="historico">Histórico</button>
   <button data-view="membros">Membros</button>
+  <button data-view="atividade">Atividade</button>
 </nav>
 
 <main>
@@ -395,12 +396,25 @@
       <button type="button" class="submit" id="addMemberBtn">Cadastrar</button>
     </div>
     <div id="manageWrap"></div>
+
+    <div class="add-form" id="newEditorForm" style="display:none; margin-top:26px; border-color:var(--amber);">
+      <label style="color:var(--amber); font-family:'Space Grotesk'; font-size:0.86rem;">Criar novo editor</label>
+      <label>E-mail</label>
+      <input type="email" id="newEditorEmail" autocomplete="off">
+      <label>Senha (mínimo 6 caracteres)</label>
+      <input type="password" id="newEditorPassword" autocomplete="new-password">
+      <button type="button" class="submit" id="createEditorBtn">Criar acesso de editor</button>
+    </div>
+  </div>
+
+  <div class="view" id="view-atividade">
+    <div id="activityWrap"></div>
   </div>
 
 </main>
 
 <footer style="padding:14px 16px 20px; text-align:center; color:var(--text-muted); font-family:'IBM Plex Mono'; font-size:0.68rem;">
-  v25 · dados compartilhados (Firebase) · atualizado em 14/09/2026
+  v27 · dados compartilhados (Firebase) · atualizado em 14/09/2026
 </footer>
 
 <div class="overlay" id="overlay">
@@ -455,10 +469,11 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
-  getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot
+  getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, arrayUnion
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import {
-  getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, sendPasswordResetEmail
+  getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, sendPasswordResetEmail,
+  createUserWithEmailAndPassword
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
 const firebaseConfig = {
@@ -473,12 +488,19 @@ const firebaseConfig = {
 const fbApp = initializeApp(firebaseConfig);
 const db = getFirestore(fbApp);
 const auth = getAuth(fbApp);
+// app secundário: usado só para criar um novo usuário sem derrubar a
+// sessão de quem está logado agora (criar usuário loga automaticamente
+// nessa instância separada, não na principal)
+const fbAppSecondary = initializeApp(firebaseConfig, "Secondary");
+const authSecondary = getAuth(fbAppSecondary);
 
 const CYCLE_START_DAY = 16; // ciclo vai do dia 16 ao dia 15 do mês seguinte
 
 let members = [];
 let signatures = [];
+let activityLog = [];
 let isEditor = false;
+let currentUserEmail = null;
 
 function todayISO(){ return new Date().toISOString().slice(0,10); }
 
@@ -539,6 +561,7 @@ function render(){
   renderRanking();
   renderHistorico();
   renderMembros();
+  renderAtividade();
 }
 
 function renderHeader(){
@@ -633,6 +656,16 @@ function escapeHtml(str){
   return str.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
+async function logActivity(action, description){
+  try{
+    await addDoc(collection(db, 'activity_log'), {
+      action, description,
+      by: currentUserEmail || 'desconhecido',
+      at: new Date().toISOString()
+    });
+  } catch(e){ console.error('Erro ao registrar atividade:', e); }
+}
+
 async function registerSignature(slotMemberId, signedBy, date, aircraft, reason){
   const rec = { slotMemberId, signedBy, date, aircraft, validUntil: cycleEnd(date) };
   if(reason) rec.reason = reason;
@@ -666,6 +699,7 @@ function openSignSelf(memberId){
       return;
     }
     registerSignature(memberId, memberId, date, aircraft);
+    logActivity('sign', `${member.name} assinou (${aircraft}) — ${fmtDate(date)}`);
     closeSheet();
     render();
   };
@@ -723,6 +757,9 @@ function confirmSubstitute(substituteId){
   }
   const date = document.getElementById('signDateInput').value || todayISO();
   registerSignature(pendingSlotMember, substituteId, date, aircraft, reason);
+  const origMember = members.find(m => m.id === pendingSlotMember);
+  const subMember = members.find(m => m.id === substituteId);
+  logActivity('substitute', `${subMember ? subMember.name : '?'} assinou no lugar de ${origMember ? origMember.name : '?'} (${aircraft}) — ${fmtDate(date)}`);
   closeSheet();
   render();
 }
@@ -767,6 +804,7 @@ function openEditRecord(recordId){
       updates.reason = reason;
     }
     await updateDoc(doc(db, 'signatures', recordId), updates);
+    logActivity('edit', `Editou assinatura de ${slotMember ? slotMember.name : '?'} — ${fmtDate(date)}, ${aircraft}`);
     closeSheet();
   };
 
@@ -775,7 +813,12 @@ function openEditRecord(recordId){
 
 async function deleteRecord(recordId){
   if(!confirm('Excluir esta assinatura? Essa ação não pode ser desfeita.')) return;
+  const rec = signatures.find(s => s.id === recordId);
   await deleteDoc(doc(db, 'signatures', recordId));
+  if(rec){
+    const slotMember = members.find(m => m.id === rec.slotMemberId);
+    logActivity('delete', `Excluiu assinatura de ${slotMember ? slotMember.name : '?'} — ${fmtDate(rec.date)}`);
+  }
 }
 
 function closeSheet(){
@@ -1047,9 +1090,35 @@ function renderMembros(){
   `).join('');
 }
 
+function fmtDateTime(iso){
+  if(!iso) return '—';
+  const d = new Date(iso);
+  const date = fmtDate(d.toISOString().slice(0,10));
+  const hh = String(d.getHours()).padStart(2,'0');
+  const mm = String(d.getMinutes()).padStart(2,'0');
+  return `${date} ${hh}:${mm}`;
+}
+
+function renderAtividade(){
+  const wrap = document.getElementById('activityWrap');
+  const entries = [...activityLog].sort((a,b) => (b.at||'').localeCompare(a.at||''));
+  if(entries.length === 0){
+    wrap.innerHTML = `<div class="empty">Nenhuma atividade registrada ainda.</div>`;
+    return;
+  }
+  wrap.innerHTML = entries.map(e => `
+    <div class="hist-item">
+      <div class="d">${fmtDateTime(e.at)} · ${escapeHtml(e.by || 'desconhecido')}</div>
+      <div>${escapeHtml(e.description || '')}</div>
+    </div>
+  `).join('');
+}
+
 async function removeMember(id){
   if(!confirm('Remover este integrante? O histórico de assinaturas dele será mantido.')) return;
+  const member = members.find(m => m.id === id);
   await deleteDoc(doc(db, 'members', id));
+  logActivity('remove_member', `Removeu ${member ? member.name : '?'} dos integrantes`);
 }
 
 document.getElementById('addMemberBtn').onclick = async () => {
@@ -1057,7 +1126,46 @@ document.getElementById('addMemberBtn').onclick = async () => {
   const name = nameInput.value.trim();
   if(!name){ alert('Digite o nome do integrante.'); return; }
   await addDoc(collection(db, 'members'), { name });
+  logActivity('add_member', `Cadastrou ${name} como integrante`);
   nameInput.value = '';
+};
+
+document.getElementById('createEditorBtn').onclick = async () => {
+  const emailInput = document.getElementById('newEditorEmail');
+  const passwordInput = document.getElementById('newEditorPassword');
+  const email = emailInput.value.trim();
+  const password = passwordInput.value;
+  if(!email || !password){
+    alert('Preencha o e-mail e a senha do novo editor.');
+    return;
+  }
+  if(password.length < 6){
+    alert('A senha precisa ter pelo menos 6 caracteres.');
+    return;
+  }
+  const btn = document.getElementById('createEditorBtn');
+  btn.disabled = true;
+  btn.textContent = 'Criando...';
+  try{
+    const cred = await createUserWithEmailAndPassword(authSecondary, email, password);
+    await updateDoc(doc(db, 'config', 'editors'), { uids: arrayUnion(cred.user.uid) });
+    await signOut(authSecondary); // não deixa essa sessão secundária pendurada
+    logActivity('add_editor', `Criou acesso de editor para ${email}`);
+    emailInput.value = '';
+    passwordInput.value = '';
+    alert(`Editor criado! ${email} já pode entrar com a senha cadastrada.`);
+  } catch(e){
+    if(e.code === 'auth/email-already-in-use'){
+      alert('Já existe uma conta com esse e-mail.');
+    } else if(e.code === 'auth/invalid-email'){
+      alert('E-mail inválido.');
+    } else {
+      alert('Não foi possível criar o editor. Tente novamente.');
+    }
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Criar acesso de editor';
+  }
 };
 
 document.getElementById('histCycleFilter').addEventListener('change', renderHistorico);
@@ -1087,8 +1195,7 @@ const authOverlay = document.getElementById('authOverlay');
 function applyEditorUI(){
   authBtn.textContent = isEditor ? 'Sair (editor)' : 'Entrar';
   authBtn.classList.toggle('is-editor', isEditor);
-  const addForm = document.querySelector('.add-form');
-  if(addForm) addForm.style.display = isEditor ? 'flex' : 'none';
+  document.querySelectorAll('.add-form').forEach(f => f.style.display = isEditor ? 'flex' : 'none');
 }
 applyEditorUI();
 
@@ -1130,6 +1237,7 @@ document.getElementById('authSubmitBtn').onclick = async () => {
 
 onAuthStateChanged(auth, (user) => {
   isEditor = !!user;
+  currentUserEmail = user ? user.email : null;
   applyEditorUI();
   render();
 });
@@ -1145,6 +1253,11 @@ onSnapshot(collection(db, 'signatures'), (snap) => {
   signatures = snap.docs.map(d => ({ id: d.id, ...d.data() }));
   render();
 }, (err) => console.error('Erro ao ler assinaturas:', err));
+
+onSnapshot(collection(db, 'activity_log'), (snap) => {
+  activityLog = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  render();
+}, (err) => console.error('Erro ao ler atividade:', err));
 
 // funções referenciadas via onclick="" no HTML gerado precisam estar
 // no escopo global, já que este script agora é um module
