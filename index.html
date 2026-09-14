@@ -396,7 +396,7 @@
 </main>
 
 <footer style="padding:14px 16px 20px; text-align:center; color:var(--text-muted); font-family:'IBM Plex Mono'; font-size:0.68rem;">
-  v20 · dados compartilhados (Firebase) · atualizado em 13/09/2026
+  v21 · dados compartilhados (Firebase) · atualizado em 13/09/2026
 </footer>
 
 <div class="overlay" id="overlay">
@@ -599,7 +599,13 @@ function renderPainel(){
     <div class="summary-card"><div class="num mono">${subCount}</div><div class="label">substituições no histórico</div></div>
   `;
 
-  const all = [...members].sort((a,b) => a.name.localeCompare(b.name, 'pt-BR'));
+  const statusOrder = { ok: 0, warn: 1, none: 2 };
+  const all = [...members].sort((a, b) => {
+    const oa = statusOrder[statusFor(a.id).state];
+    const ob = statusOrder[statusFor(b.id).state];
+    if(oa !== ob) return oa - ob;
+    return a.name.localeCompare(b.name, 'pt-BR');
+  });
   const section = document.createElement('section');
   section.className = 'team';
   const rows = all.map(m => memberRowHtml(m)).join('');
