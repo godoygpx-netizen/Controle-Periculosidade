@@ -140,6 +140,8 @@
   .member-row:last-child{border-bottom:none;}
   .member-info{min-width:0;}
   .member-info .nm{font-size:0.94rem; font-weight:500;}
+  .nm-link{cursor:pointer; text-decoration:underline; text-decoration-style:dotted; text-underline-offset:3px;}
+  .nm-link:active{opacity:0.7;}
   .member-info .meta{font-size:0.74rem; color:var(--text-muted); font-family:'IBM Plex Mono'; margin-top:2px;}
   .member-info .meta .covered{color:var(--steel);}
   .status-pill{
@@ -394,7 +396,7 @@
 </main>
 
 <footer style="padding:14px 16px 20px; text-align:center; color:var(--text-muted); font-family:'IBM Plex Mono'; font-size:0.68rem;">
-  v19 · dados compartilhados (Firebase) · atualizado em 13/09/2026
+  v20 · dados compartilhados (Firebase) · atualizado em 13/09/2026
 </footer>
 
 <div class="overlay" id="overlay">
@@ -429,6 +431,15 @@
     </div>
     <button class="confirm" id="authSubmitBtn">Entrar</button>
     <button class="cancel" id="authCancelBtn">Cancelar</button>
+  </div>
+</div>
+
+<div class="overlay" id="memberHistOverlay">
+  <div class="sheet" style="max-height:80vh; overflow-y:auto;">
+    <h3 id="memberHistTitle"></h3>
+    <p class="sub">Todas as assinaturas relacionadas a esta pessoa.</p>
+    <div id="memberHistList"></div>
+    <button class="cancel" id="memberHistCloseBtn">Fechar</button>
   </div>
 </div>
 
@@ -546,7 +557,7 @@ function memberRowHtml(m){
   return `
     <div class="member-row">
       <div class="member-info">
-        <div class="nm">${escapeHtml(m.name)}</div>
+        <div class="nm nm-link" onclick="openMemberHistory('${m.id}')">${escapeHtml(m.name)}</div>
         <div class="meta">${metaLine || '&nbsp;'}</div>
       </div>
       <div class="row-actions">
@@ -783,7 +794,7 @@ function renderRanking(){
       <div class="rank-row${idx < highlightN ? ' top1' : ''}">
         <div class="rank-pos">${idx+1}º</div>
         <div class="rank-info">
-          <div class="nm">${escapeHtml(m.name)}</div>
+          <div class="nm nm-link" onclick="openMemberHistory('${m.id}')">${escapeHtml(m.name)}</div>
           <div class="meta" style="font-size:0.72rem; color:${idx < highlightN ? 'var(--amber)' : 'var(--text-muted)'}; font-family:'IBM Plex Mono'; margin-top:2px;">
             ${idx < highlightN ? 'prioridade · ' : ''}${m.lastDate ? `última em ${fmtDate(m.lastDate)}` : 'nunca assinou'}
           </div>
@@ -802,6 +813,50 @@ function cycleLabel(endISO){
   const start = new Date(sy, sm, 16).toISOString().slice(0,10);
   return `${fmtDate(start)} a ${fmtDate(endISO)}`;
 }
+
+function openMemberHistory(memberId){
+  const member = members.find(m => m.id === memberId);
+  if(!member) return;
+  const recs = signatures.filter(s => s.signedBy === memberId || s.slotMemberId === memberId)
+    .sort((a,b) => b.date.localeCompare(a.date));
+
+  document.getElementById('memberHistTitle').textContent = `Histórico de ${member.name}`;
+  const wrap = document.getElementById('memberHistList');
+  if(recs.length === 0){
+    wrap.innerHTML = `<div class="empty">Nenhuma assinatura registrada para ${escapeHtml(member.name)}.</div>`;
+  } else {
+    wrap.innerHTML = recs.map(s => {
+      const signer = members.find(m => m.id === s.signedBy);
+      const orig = members.find(m => m.id === s.slotMemberId);
+      const isSubstitute = s.signedBy !== s.slotMemberId;
+      let line;
+      if(!isSubstitute){
+        line = 'assinou (própria)';
+      } else if(s.signedBy === memberId){
+        line = `assinou no lugar de <span class="of">${orig ? escapeHtml(orig.name) : '?'}</span>`;
+      } else {
+        line = `<span class="who">${signer ? escapeHtml(signer.name) : '?'}</span> assinou no lugar dela`;
+      }
+      return `<div class="hist-item">
+        <div class="d">${fmtDate(s.date)}</div>
+        <div>${line}</div>
+        ${s.reason ? `<div style="margin-top:4px; color:var(--text-muted); font-size:0.82rem;">${escapeHtml(s.reason)}</div>` : ''}
+        ${isEditor ? `
+        <div class="hist-actions">
+          <button onclick="openEditRecord('${s.id}')">editar</button>
+          <button class="del" onclick="deleteRecord('${s.id}')">excluir</button>
+        </div>` : ''}
+      </div>`;
+    }).join('');
+  }
+  document.getElementById('memberHistOverlay').classList.add('active');
+}
+document.getElementById('memberHistCloseBtn').onclick = () => {
+  document.getElementById('memberHistOverlay').classList.remove('active');
+};
+document.getElementById('memberHistOverlay').addEventListener('click', (e) => {
+  if(e.target.id === 'memberHistOverlay') e.currentTarget.classList.remove('active');
+});
 
 function renderHistorico(){
   const wrap = document.getElementById('histWrap');
@@ -1040,6 +1095,7 @@ window.openSubstitute = openSubstitute;
 window.openEditRecord = openEditRecord;
 window.deleteRecord = deleteRecord;
 window.removeMember = removeMember;
+window.openMemberHistory = openMemberHistory;
 
 render();
 </script>
