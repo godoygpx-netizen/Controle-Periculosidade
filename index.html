@@ -440,6 +440,9 @@
         <option value="mecanica">Mecânica</option>
         <option value="eletrica">Elétrica</option>
       </select>
+      <div class="perm-row">
+        <label><input type="checkbox" id="newQualified"> Qualificado</label>
+      </div>
       <button type="button" class="submit" id="addMemberBtn">Cadastrar</button>
     </div>
     <div id="manageWrap"></div>
@@ -489,7 +492,7 @@
 </div>
 
 <footer style="padding:14px 16px 20px; text-align:center; color:var(--text-muted); font-family:'IBM Plex Mono'; font-size:0.68rem;">
-  v46 · dados compartilhados (Firebase) · atualizado em 14/09/2026
+  v47 · dados compartilhados (Firebase) · atualizado em 14/09/2026
 </footer>
 
 <div class="overlay" id="overlay">
@@ -559,7 +562,7 @@
 <div class="overlay" id="editMemberOverlay">
   <div class="sheet">
     <h3>Editar integrante</h3>
-    <p class="sub">Ajuste o nome e a tecnologia.</p>
+    <p class="sub">Ajuste o nome, a tecnologia e se é qualificado.</p>
     <div class="date-row">
       <label>Nome do integrante</label>
       <input type="text" id="editMemberName">
@@ -570,6 +573,9 @@
         <option value="mecanica">Mecânica</option>
         <option value="eletrica">Elétrica</option>
       </select>
+    </div>
+    <div class="perm-row" style="margin-bottom:14px;">
+      <label><input type="checkbox" id="editMemberQualified"> Qualificado</label>
     </div>
     <button class="confirm" id="saveMemberEditBtn">Salvar alterações</button>
     <button class="cancel" id="editMemberCancelBtn">Cancelar</button>
@@ -1008,14 +1014,28 @@ signDateInputEl.addEventListener('click', () => {
 });
 
 function computeHighlighted(ranked, highlightN, splitTech){
+  let chosen;
   if(!splitTech){
-    return new Set(ranked.slice(0, highlightN).map(m => m.id));
+    chosen = ranked.slice(0, highlightN);
+  } else {
+    const half1 = Math.ceil(highlightN / 2);
+    const half2 = highlightN - half1;
+    const mec = ranked.filter(m => m.tech === 'mecanica');
+    const ele = ranked.filter(m => m.tech === 'eletrica');
+    chosen = [...mec.slice(0, half1), ...ele.slice(0, half2)];
   }
-  const half1 = Math.ceil(highlightN / 2);
-  const half2 = highlightN - half1;
-  const mec = ranked.filter(m => m.tech === 'mecanica');
-  const ele = ranked.filter(m => m.tech === 'eletrica');
-  const chosen = [...mec.slice(0, half1), ...ele.slice(0, half2)];
+
+  // garante pelo menos 1 qualificado na seleção, se existir algum cadastrado
+  const anyQualifiedExists = ranked.some(m => m.qualificado);
+  const hasQualified = chosen.some(m => m.qualificado);
+  if(anyQualifiedExists && !hasQualified && chosen.length > 0){
+    const chosenIds = new Set(chosen.map(m => m.id));
+    const bestQualified = ranked.find(m => m.qualificado && !chosenIds.has(m.id));
+    if(bestQualified){
+      chosen[chosen.length - 1] = bestQualified;
+    }
+  }
+
   return new Set(chosen.map(m => m.id));
 }
 
@@ -1060,7 +1080,7 @@ function renderRanking(){
       <div class="rank-row${isHi ? ' top1' : ''}">
         <div class="rank-pos">${idx+1}º</div>
         <div class="rank-info">
-          <div class="nm nm-link" onclick="openMemberHistory('${m.id}')">${escapeHtml(m.name)}${techLabel ? `<span class="team-tag ${m.tech === 'mecanica' ? 'A' : 'B'}">${techLabel}</span>` : ''}</div>
+          <div class="nm nm-link" onclick="openMemberHistory('${m.id}')">${escapeHtml(m.name)}${techLabel ? `<span class="team-tag ${m.tech === 'mecanica' ? 'A' : 'B'}">${techLabel}</span>` : ''}${m.qualificado ? `<span class="team-tag" style="border-color:var(--ok); color:var(--ok);">Qualificado</span>` : ''}</div>
           <div class="meta" style="font-size:0.72rem; color:${isHi ? 'var(--amber)' : 'var(--text-muted)'}; font-family:'IBM Plex Mono'; margin-top:2px;">
             ${isHi ? 'prioridade · ' : ''}${m.lastDate ? `última em ${fmtDate(m.lastDate)}` : 'nunca assinou'}
           </div>
@@ -1316,9 +1336,10 @@ function renderMembros(){
   wrap.innerHTML = all.map(m => {
     const techLabel = m.tech === 'mecanica' ? 'Mecânica' : m.tech === 'eletrica' ? 'Elétrica' : null;
     const techBadge = techLabel ? `<span class="team-tag ${m.tech === 'mecanica' ? 'A' : 'B'}">${techLabel}</span>` : '';
+    const qualifiedBadge = m.qualificado ? `<span class="team-tag" style="border-color:var(--ok); color:var(--ok);">Qualificado</span>` : '';
     return `
     <div class="member-manage-row">
-      <span>${escapeHtml(m.name)}${techBadge}</span>
+      <span>${escapeHtml(m.name)}${techBadge}${qualifiedBadge}</span>
       ${canMembros ? `
       <span style="display:flex; gap:14px;">
         <button class="row-edit" onclick="openEditMember('${m.id}')">editar</button>
@@ -1458,6 +1479,7 @@ function openEditMember(id){
   editingMemberId = id;
   document.getElementById('editMemberName').value = member.name;
   document.getElementById('editMemberTech').value = member.tech === 'eletrica' ? 'eletrica' : 'mecanica';
+  document.getElementById('editMemberQualified').checked = !!member.qualificado;
   document.getElementById('editMemberOverlay').classList.add('active');
 }
 document.getElementById('editMemberCancelBtn').onclick = () => {
@@ -1475,13 +1497,14 @@ document.getElementById('saveMemberEditBtn').onclick = async () => {
   if(!id) return;
   const name = document.getElementById('editMemberName').value.trim();
   const tech = document.getElementById('editMemberTech').value;
+  const qualificado = document.getElementById('editMemberQualified').checked;
   if(!name){ alert('Digite o nome do integrante.'); return; }
   const btn = document.getElementById('saveMemberEditBtn');
   btn.disabled = true;
   btn.textContent = 'Salvando...';
   try{
-    await updateDoc(doc(db, 'members', id), { name, tech });
-    logActivity('edit_member', `Editou integrante para ${name} (${tech === 'mecanica' ? 'Mecânica' : 'Elétrica'})`);
+    await updateDoc(doc(db, 'members', id), { name, tech, qualificado });
+    logActivity('edit_member', `Editou integrante para ${name} (${tech === 'mecanica' ? 'Mecânica' : 'Elétrica'}${qualificado ? ', qualificado' : ''})`);
     document.getElementById('editMemberOverlay').classList.remove('active');
     editingMemberId = null;
   } catch(e){
@@ -1507,11 +1530,13 @@ document.getElementById('addMemberBtn').onclick = async () => {
   const nameInput = document.getElementById('newName');
   const name = nameInput.value.trim();
   const tech = document.getElementById('newTech').value;
+  const qualificado = document.getElementById('newQualified').checked;
   if(!name){ alert('Digite o nome do integrante.'); return; }
   try{
-    await addDoc(collection(db, 'members'), { name, tech });
-    logActivity('add_member', `Cadastrou ${name} como integrante (${tech === 'mecanica' ? 'Mecânica' : 'Elétrica'})`);
+    await addDoc(collection(db, 'members'), { name, tech, qualificado });
+    logActivity('add_member', `Cadastrou ${name} como integrante (${tech === 'mecanica' ? 'Mecânica' : 'Elétrica'}${qualificado ? ', qualificado' : ''})`);
     nameInput.value = '';
+    document.getElementById('newQualified').checked = false;
   } catch(e){
     alert('Não foi possível cadastrar (' + (e.code || e.message || 'erro desconhecido') + '). Verifique se você ainda está logado como editor.');
   }
