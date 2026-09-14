@@ -455,7 +455,7 @@
 </main>
 
 <footer style="padding:14px 16px 20px; text-align:center; color:var(--text-muted); font-family:'IBM Plex Mono'; font-size:0.68rem;">
-  v35 · dados compartilhados (Firebase) · atualizado em 14/09/2026
+  v36 · dados compartilhados (Firebase) · atualizado em 14/09/2026
 </footer>
 
 <div class="overlay" id="overlay">
@@ -504,6 +504,16 @@
     <p class="sub">Todas as assinaturas relacionadas a esta pessoa.</p>
     <div id="memberHistList"></div>
     <button class="cancel" id="memberHistCloseBtn">Fechar</button>
+  </div>
+</div>
+
+<div class="overlay" id="actionChoiceOverlay">
+  <div class="sheet">
+    <h3 id="actionChoiceTitle"></h3>
+    <p class="sub">O que você quer registrar para essa pessoa?</p>
+    <button class="confirm" id="actionChoiceSignBtn">Ele assinou</button>
+    <button class="confirm" id="actionChoiceSubBtn" style="background:var(--steel); margin-top:8px;">Foi substituído por outra pessoa</button>
+    <button class="cancel" id="actionChoiceCancelBtn">Cancelar</button>
   </div>
 </div>
 
@@ -646,10 +656,13 @@ function memberRowHtml(m){
     pillClass='none'; pillText = 'sem registro';
   }
   const needsAction = st.state !== 'ok';
+  const nameAction = (needsAction && canPainel)
+    ? `openActionChoice('${m.id}')`
+    : `openMemberHistory('${m.id}')`;
   return `
     <div class="member-row">
       <div class="member-info">
-        <div class="nm nm-link" onclick="openMemberHistory('${m.id}')">${escapeHtml(m.name)}</div>
+        <div class="nm nm-link" onclick="${nameAction}">${escapeHtml(m.name)}</div>
         <div class="meta">${metaLine || '&nbsp;'}</div>
       </div>
       <div class="row-actions">
@@ -657,14 +670,6 @@ function memberRowHtml(m){
         ${canHistorico && st.rec ? `<button class="row-edit" onclick="openEditRecord('${st.rec.id}')">editar</button>` : ''}
       </div>
     </div>
-    ${needsAction && canPainel ? `
-    <div class="member-row" style="border-top:none; padding-top:0;">
-      <div></div>
-      <div class="row-actions">
-        <button class="btn primary" onclick="openSignSelf('${m.id}')">Assinou</button>
-        <button class="btn sub" onclick="openSubstitute('${m.id}')">Substituir</button>
-      </div>
-    </div>` : ''}
   `;
 }
 
@@ -971,6 +976,36 @@ function cycleLabel(endISO){
   const start = new Date(sy, sm, 16).toISOString().slice(0,10);
   return `${fmtDate(start)} a ${fmtDate(endISO)}`;
 }
+
+let actionChoiceMemberId = null;
+function openActionChoice(memberId){
+  actionChoiceMemberId = memberId;
+  const member = members.find(m => m.id === memberId);
+  document.getElementById('actionChoiceTitle').textContent = member ? member.name : '';
+  document.getElementById('actionChoiceOverlay').classList.add('active');
+}
+document.getElementById('actionChoiceCancelBtn').onclick = () => {
+  document.getElementById('actionChoiceOverlay').classList.remove('active');
+  actionChoiceMemberId = null;
+};
+document.getElementById('actionChoiceOverlay').addEventListener('click', (e) => {
+  if(e.target.id === 'actionChoiceOverlay'){
+    e.currentTarget.classList.remove('active');
+    actionChoiceMemberId = null;
+  }
+});
+document.getElementById('actionChoiceSignBtn').onclick = () => {
+  const id = actionChoiceMemberId;
+  document.getElementById('actionChoiceOverlay').classList.remove('active');
+  actionChoiceMemberId = null;
+  if(id) openSignSelf(id);
+};
+document.getElementById('actionChoiceSubBtn').onclick = () => {
+  const id = actionChoiceMemberId;
+  document.getElementById('actionChoiceOverlay').classList.remove('active');
+  actionChoiceMemberId = null;
+  if(id) openSubstitute(id);
+};
 
 function openMemberHistory(memberId){
   const member = members.find(m => m.id === memberId);
@@ -1638,6 +1673,7 @@ window.removeEditor = removeEditor;
 window.approveAccessRequest = approveAccessRequest;
 window.denyAccessRequest = denyAccessRequest;
 window.openMemberHistory = openMemberHistory;
+window.openActionChoice = openActionChoice;
 
 render();
 </script>
