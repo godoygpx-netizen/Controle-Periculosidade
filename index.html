@@ -357,7 +357,7 @@
   <button data-view="ranking">Ranking</button>
   <button data-view="historico">Histórico</button>
   <button data-view="membros">Membros</button>
-  <button data-view="atividade">Atividade</button>
+  <button data-view="atividade" id="tabAtividade">Atividade</button>
 </nav>
 
 <main>
@@ -430,7 +430,7 @@
 </main>
 
 <footer style="padding:14px 16px 20px; text-align:center; color:var(--text-muted); font-family:'IBM Plex Mono'; font-size:0.68rem;">
-  v30 · dados compartilhados (Firebase) · atualizado em 14/09/2026
+  v31 · dados compartilhados (Firebase) · atualizado em 14/09/2026
 </footer>
 
 <div class="overlay" id="overlay">
@@ -519,6 +519,8 @@ let activityLog = [];
 let editorsDoc = { uids: [], emails: {} };
 let isEditor = false;
 let currentUserEmail = null;
+const SUPER_ADMIN_UID = "2lPeo5B0uSgni43kAfkHX81Nt522";
+let isSuperAdmin = false;
 
 function todayISO(){ return new Date().toISOString().slice(0,10); }
 
@@ -1334,6 +1336,18 @@ function applyEditorUI(){
   document.querySelectorAll('.add-form').forEach(f => f.style.display = isEditor ? 'flex' : 'none');
   const editorsSection = document.getElementById('editorsListSection');
   if(editorsSection) editorsSection.style.display = isEditor ? 'block' : 'none';
+
+  const tabAtividade = document.getElementById('tabAtividade');
+  if(tabAtividade){
+    tabAtividade.style.display = isSuperAdmin ? '' : 'none';
+    if(!isSuperAdmin && tabAtividade.classList.contains('active')){
+      // não deixa a aba escondida continuar "selecionada" por trás
+      tabAtividade.classList.remove('active');
+      document.getElementById('view-atividade').classList.remove('active');
+      document.querySelector('nav.tabs button[data-view="painel"]').classList.add('active');
+      document.getElementById('view-painel').classList.add('active');
+    }
+  }
 }
 applyEditorUI();
 
@@ -1376,7 +1390,9 @@ document.getElementById('authSubmitBtn').onclick = async () => {
 onAuthStateChanged(auth, (user) => {
   isEditor = !!user;
   currentUserEmail = user ? user.email : null;
+  isSuperAdmin = !!user && user.uid === SUPER_ADMIN_UID;
   applyEditorUI();
+  updateActivitySubscription();
   render();
 });
 
@@ -1392,10 +1408,19 @@ onSnapshot(collection(db, 'signatures'), (snap) => {
   render();
 }, (err) => console.error('Erro ao ler assinaturas:', err));
 
-onSnapshot(collection(db, 'activity_log'), (snap) => {
-  activityLog = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  render();
-}, (err) => console.error('Erro ao ler atividade:', err));
+let unsubscribeActivity = null;
+function updateActivitySubscription(){
+  if(isSuperAdmin && !unsubscribeActivity){
+    unsubscribeActivity = onSnapshot(collection(db, 'activity_log'), (snap) => {
+      activityLog = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      render();
+    }, (err) => console.error('Erro ao ler atividade:', err));
+  } else if(!isSuperAdmin && unsubscribeActivity){
+    unsubscribeActivity();
+    unsubscribeActivity = null;
+    activityLog = [];
+  }
+}
 
 onSnapshot(doc(db, 'config', 'editors'), (snap) => {
   editorsDoc = snap.exists() ? snap.data() : { uids: [], emails: {} };
