@@ -466,7 +466,7 @@
 </div>
 
 <footer style="padding:14px 16px 20px; text-align:center; color:var(--text-muted); font-family:'IBM Plex Mono'; font-size:0.68rem;">
-  v38 · dados compartilhados (Firebase) · atualizado em 14/09/2026
+  v39 · dados compartilhados (Firebase) · atualizado em 14/09/2026
 </footer>
 
 <div class="overlay" id="overlay">
@@ -493,8 +493,8 @@
 
 <div class="overlay" id="authOverlay">
   <div class="sheet">
-    <h3>Entrar como editor</h3>
-    <p class="sub">Só quem tiver a senha consegue editar. Todo mundo continua podendo visualizar sem entrar.</p>
+    <h3 id="authTitle">Entrar</h3>
+    <p class="sub" id="authSub">Entre com sua conta para acessar o app.</p>
     <div class="date-row">
       <label>E-mail</label>
       <input type="email" id="authEmail" autocomplete="username">
@@ -505,6 +505,7 @@
     </div>
     <button class="confirm" id="authSubmitBtn">Entrar</button>
     <button type="button" id="forgotPasswordLink" style="width:100%; background:none; border:none; padding:10px 0 0; color:var(--text-muted); font-family:'IBM Plex Sans'; font-size:0.78rem; text-decoration:underline; cursor:pointer;">Esqueci minha senha</button>
+    <button type="button" id="signupToggleLink" style="width:100%; background:none; border:none; padding:8px 0 0; color:var(--steel); font-family:'IBM Plex Sans'; font-size:0.78rem; text-decoration:underline; cursor:pointer;">Não tem conta? Criar cadastro</button>
     <button class="cancel" id="authCancelBtn">Cancelar</button>
   </div>
 </div>
@@ -1579,12 +1580,14 @@ authBtn.addEventListener('click', () => {
   } else {
     document.getElementById('authEmail').value = '';
     document.getElementById('authPassword').value = '';
+    setAuthMode('login');
     authOverlay.classList.add('active');
   }
 });
 document.getElementById('gateLoginBtn').addEventListener('click', () => {
   document.getElementById('authEmail').value = '';
   document.getElementById('authPassword').value = '';
+  setAuthMode('login');
   authOverlay.classList.add('active');
 });
 document.getElementById('authCancelBtn').onclick = () => authOverlay.classList.remove('active');
@@ -1602,10 +1605,59 @@ document.getElementById('forgotPasswordLink').onclick = async () => {
   }
 };
 authOverlay.addEventListener('click', (e) => { if(e.target.id === 'authOverlay') authOverlay.classList.remove('active'); });
+let authMode = 'login';
+function setAuthMode(mode){
+  authMode = mode;
+  const isSignup = mode === 'signup';
+  document.getElementById('authTitle').textContent = isSignup ? 'Criar conta' : 'Entrar';
+  document.getElementById('authSub').textContent = isSignup
+    ? 'Crie seu acesso com e-mail e senha. Depois de criar, o pedido de acesso é enviado para um editor aprovar.'
+    : 'Entre com sua conta para acessar o app.';
+  document.getElementById('authSubmitBtn').textContent = isSignup ? 'Criar conta e pedir acesso' : 'Entrar';
+  document.getElementById('forgotPasswordLink').style.display = isSignup ? 'none' : 'block';
+  document.getElementById('signupToggleLink').textContent = isSignup ? 'Já tem conta? Entrar' : 'Não tem conta? Criar cadastro';
+}
+document.getElementById('signupToggleLink').onclick = () => {
+  setAuthMode(authMode === 'signup' ? 'login' : 'signup');
+};
+
 document.getElementById('authSubmitBtn').onclick = async () => {
   const email = document.getElementById('authEmail').value.trim();
   const password = document.getElementById('authPassword').value;
   if(!email || !password){ alert('Preencha e-mail e senha.'); return; }
+
+  if(authMode === 'signup'){
+    if(password.length < 6){ alert('A senha precisa ter pelo menos 6 caracteres.'); return; }
+    const btn = document.getElementById('authSubmitBtn');
+    btn.disabled = true;
+    btn.textContent = 'Criando...';
+    try{
+      const cred = await createUserWithEmailAndPassword(auth, email, password);
+      await addDoc(collection(db, 'access_requests'), {
+        uid: cred.user.uid,
+        email: cred.user.email,
+        at: new Date().toISOString()
+      });
+      authOverlay.classList.remove('active');
+      setAuthMode('login');
+      alert('Conta criada! Seu pedido de acesso foi enviado — avise um editor para aprovar dentro do app.');
+    } catch(e){
+      if(e.code === 'auth/email-already-in-use'){
+        alert('Já existe uma conta com esse e-mail. Tente entrar em vez de criar uma nova.');
+      } else if(e.code === 'auth/invalid-email'){
+        alert('E-mail inválido.');
+      } else if(e.code === 'auth/weak-password'){
+        alert('Senha muito fraca. Use pelo menos 6 caracteres.');
+      } else {
+        alert('Não foi possível criar a conta (' + (e.code || e.message || 'erro desconhecido') + ').');
+      }
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Criar conta e pedir acesso';
+    }
+    return;
+  }
+
   try{
     await signInWithEmailAndPassword(auth, email, password);
     authOverlay.classList.remove('active');
