@@ -201,6 +201,14 @@
     font-family:'IBM Plex Sans';
     font-size:0.92rem;
   }
+  .add-form select{
+    background:var(--bg);
+    border:1px solid var(--line-strong);
+    color:var(--text);
+    padding:9px 10px;
+    font-family:'IBM Plex Sans';
+    font-size:0.92rem;
+  }
   .perm-row{display:flex; flex-direction:column; gap:8px;}
   .perm-row label{
     display:flex; align-items:center; gap:8px;
@@ -397,6 +405,9 @@
       <label for="highlightCount">Destacar quantas pessoas</label>
       <input type="number" id="highlightCount" min="1" step="1" value="1">
     </div>
+    <div class="perm-row" id="splitTechRow" style="margin-bottom:16px;">
+      <label><input type="checkbox" id="splitTechCheckbox"> Considerar Tecnologias? (divide igualmente entre Mecânica e Elétrica)</label>
+    </div>
     <button type="button" class="copy-btn" id="copyRankingBtn">Copiar ranking</button>
     <div id="rankWrap"></div>
   </div>
@@ -417,6 +428,11 @@
     <div class="add-form" id="addMemberForm">
       <label>Nome do integrante</label>
       <input type="text" id="newName" placeholder="Ex.: Carlos Andrade">
+      <label>Tecnologia</label>
+      <select id="newTech">
+        <option value="mecanica">Mecânica</option>
+        <option value="eletrica">Elétrica</option>
+      </select>
       <button type="button" class="submit" id="addMemberBtn">Cadastrar</button>
     </div>
     <div id="manageWrap"></div>
@@ -466,7 +482,7 @@
 </div>
 
 <footer style="padding:14px 16px 20px; text-align:center; color:var(--text-muted); font-family:'IBM Plex Mono'; font-size:0.68rem;">
-  v40 · dados compartilhados (Firebase) · atualizado em 14/09/2026
+  v42 · dados compartilhados (Firebase) · atualizado em 14/09/2026
 </footer>
 
 <div class="overlay" id="overlay">
@@ -964,6 +980,18 @@ signDateInputEl.addEventListener('click', () => {
   }
 });
 
+function computeHighlighted(ranked, highlightN, splitTech){
+  if(!splitTech){
+    return new Set(ranked.slice(0, highlightN).map(m => m.id));
+  }
+  const half1 = Math.ceil(highlightN / 2);
+  const half2 = highlightN - half1;
+  const mec = ranked.filter(m => m.tech === 'mecanica');
+  const ele = ranked.filter(m => m.tech === 'eletrica');
+  const chosen = [...mec.slice(0, half1), ...ele.slice(0, half2)];
+  return new Set(chosen.map(m => m.id));
+}
+
 function renderRanking(){
   const wrap = document.getElementById('rankWrap');
   if(members.length === 0){
@@ -985,23 +1013,31 @@ function renderRanking(){
   if(highlightN > ranked.length) highlightN = ranked.length;
   document.getElementById('highlightCount').value = highlightN;
 
+  const splitTech = localStorage.getItem('peric_rank_split_tech') === '1';
+  document.getElementById('splitTechCheckbox').checked = splitTech;
+
+  const highlighted = computeHighlighted(ranked, highlightN, splitTech);
+
   wrap.innerHTML = `<section class="team">
     <div class="team-tab" style="border-left:4px solid var(--amber);">
       <span class="name">Prioridade para a próxima assinatura</span>
       <span class="count mono">${ranked.length} integrantes</span>
     </div>
-    ${ranked.map((m, idx) => `
-      <div class="rank-row${idx < highlightN ? ' top1' : ''}">
+    ${ranked.map((m, idx) => {
+      const isHi = highlighted.has(m.id);
+      const techLabel = m.tech === 'mecanica' ? 'Mecânica' : m.tech === 'eletrica' ? 'Elétrica' : null;
+      return `
+      <div class="rank-row${isHi ? ' top1' : ''}">
         <div class="rank-pos">${idx+1}º</div>
         <div class="rank-info">
-          <div class="nm nm-link" onclick="openMemberHistory('${m.id}')">${escapeHtml(m.name)}</div>
-          <div class="meta" style="font-size:0.72rem; color:${idx < highlightN ? 'var(--amber)' : 'var(--text-muted)'}; font-family:'IBM Plex Mono'; margin-top:2px;">
-            ${idx < highlightN ? 'prioridade · ' : ''}${m.lastDate ? `última em ${fmtDate(m.lastDate)}` : 'nunca assinou'}
+          <div class="nm nm-link" onclick="openMemberHistory('${m.id}')">${escapeHtml(m.name)}${techLabel ? `<span class="team-tag ${m.tech === 'mecanica' ? 'A' : 'B'}">${techLabel}</span>` : ''}</div>
+          <div class="meta" style="font-size:0.72rem; color:${isHi ? 'var(--amber)' : 'var(--text-muted)'}; font-family:'IBM Plex Mono'; margin-top:2px;">
+            ${isHi ? 'prioridade · ' : ''}${m.lastDate ? `última em ${fmtDate(m.lastDate)}` : 'nunca assinou'}
           </div>
         </div>
         <div class="rank-count">${m.count}</div>
       </div>
-    `).join('')}
+    `;}).join('')}
   </section>`;
 }
 
@@ -1183,13 +1219,16 @@ function buildRankingText(){
   let highlightN = parseInt(localStorage.getItem('peric_rank_highlight_n'), 10);
   if(!highlightN || highlightN < 1) highlightN = 1;
   if(highlightN > ranked.length) highlightN = ranked.length;
+  const splitTech = localStorage.getItem('peric_rank_split_tech') === '1';
 
-  const proximos = ranked.slice(0, highlightN);
-  const resto = ranked.slice(highlightN);
+  const highlighted = computeHighlighted(ranked, highlightN, splitTech);
+  const proximos = ranked.filter(m => highlighted.has(m.id));
+  const resto = ranked.filter(m => !highlighted.has(m.id));
 
   const rowText = (m, idx) => {
     const lastText = m.lastDate ? `última em ${fmtDate(m.lastDate)}` : 'nunca assinou';
-    return `${idx+1}º *${m.name}* — ${m.count} assinatura${m.count===1?'':'s'} — ${lastText}`;
+    const techText = m.tech === 'mecanica' ? ' [Mecânica]' : m.tech === 'eletrica' ? ' [Elétrica]' : '';
+    return `${idx+1}º *${m.name}*${techText} — ${m.count} assinatura${m.count===1?'':'s'} — ${lastText}`;
   };
 
   const lines = [`*Ranking de assinaturas* — ${dateStr}`, ''];
@@ -1198,7 +1237,7 @@ function buildRankingText(){
   proximos.forEach((m, idx) => lines.push(rowText(m, idx)));
   if(resto.length){
     lines.push('', '*Demais*');
-    resto.forEach((m, idx) => lines.push(rowText(m, idx + highlightN)));
+    resto.forEach((m, idx) => lines.push(rowText(m, idx + proximos.length)));
   }
   return lines.join('\n');
 }
@@ -1244,12 +1283,16 @@ function renderMembros(){
     return;
   }
   const all = [...members].sort((a,b) => a.name.localeCompare(b.name, 'pt-BR'));
-  wrap.innerHTML = all.map(m => `
+  wrap.innerHTML = all.map(m => {
+    const techLabel = m.tech === 'mecanica' ? 'Mecânica' : m.tech === 'eletrica' ? 'Elétrica' : null;
+    const techBadge = techLabel ? `<span class="team-tag ${m.tech === 'mecanica' ? 'A' : 'B'}">${techLabel}</span>` : '';
+    return `
     <div class="member-manage-row">
-      <span>${escapeHtml(m.name)}</span>
+      <span>${escapeHtml(m.name)}${techBadge}</span>
       ${canMembros ? `<button class="del" onclick="removeMember('${m.id}')">remover</button>` : ''}
     </div>
-  `).join('');
+  `;
+  }).join('');
 }
 
 function fmtDateTime(iso){
@@ -1388,10 +1431,11 @@ async function removeMember(id){
 document.getElementById('addMemberBtn').onclick = async () => {
   const nameInput = document.getElementById('newName');
   const name = nameInput.value.trim();
+  const tech = document.getElementById('newTech').value;
   if(!name){ alert('Digite o nome do integrante.'); return; }
   try{
-    await addDoc(collection(db, 'members'), { name });
-    logActivity('add_member', `Cadastrou ${name} como integrante`);
+    await addDoc(collection(db, 'members'), { name, tech });
+    logActivity('add_member', `Cadastrou ${name} como integrante (${tech === 'mecanica' ? 'Mecânica' : 'Elétrica'})`);
     nameInput.value = '';
   } catch(e){
     alert('Não foi possível cadastrar (' + (e.code || e.message || 'erro desconhecido') + '). Verifique se você ainda está logado como editor.');
@@ -1531,6 +1575,11 @@ document.getElementById('highlightCount').addEventListener('change', (e) => {
   let n = parseInt(e.target.value, 10);
   if(!n || n < 1) n = 1;
   localStorage.setItem('peric_rank_highlight_n', n);
+  renderRanking();
+});
+
+document.getElementById('splitTechCheckbox').addEventListener('change', (e) => {
+  localStorage.setItem('peric_rank_split_tech', e.target.checked ? '1' : '0');
   renderRanking();
 });
 
