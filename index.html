@@ -492,7 +492,7 @@
 </div>
 
 <footer style="padding:14px 16px 20px; text-align:center; color:var(--text-muted); font-family:'IBM Plex Mono'; font-size:0.68rem;">
-  v47 · dados compartilhados (Firebase) · atualizado em 14/09/2026
+  v50 · dados compartilhados (Firebase) · atualizado em 14/09/2026
 </footer>
 
 <div class="overlay" id="overlay">
@@ -824,6 +824,7 @@ function openSignSelf(memberId){
 
   const confirmBtn = document.getElementById('confirmSelfBtn');
   confirmBtn.style.display = 'block';
+  confirmBtn.disabled = false;
   confirmBtn.textContent = 'Registrar assinatura';
   confirmBtn.onclick = async () => {
     const date = document.getElementById('signDateInput').value || todayISO();
@@ -942,6 +943,7 @@ function openEditRecord(recordId){
 
   const confirmBtn = document.getElementById('confirmSelfBtn');
   confirmBtn.style.display = 'block';
+  confirmBtn.disabled = false;
   confirmBtn.textContent = 'Salvar alterações';
   confirmBtn.onclick = async () => {
     const date = document.getElementById('signDateInput').value || rec.date;
@@ -996,7 +998,9 @@ async function deleteRecord(recordId){
 
 function closeSheet(){
   document.getElementById('overlay').classList.remove('active');
-  document.getElementById('confirmSelfBtn').style.display = 'none';
+  const confirmBtn = document.getElementById('confirmSelfBtn');
+  confirmBtn.style.display = 'none';
+  confirmBtn.disabled = false;
   document.getElementById('reasonRow').style.display = 'none';
   pendingSlotMember = null;
   editingRecordId = null;
@@ -1875,7 +1879,7 @@ function recomputeAuthorization(){
   isAuthenticated = !!user;
   isEditor = !!user && (editorsDoc.uids || []).includes(user.uid);
   currentUserEmail = user ? user.email : null;
-  isSuperAdmin = !!user && user.uid === SUPER_ADMIN_UID;
+  isSuperAdmin = !!user && (editorsDoc.superAdmins || [SUPER_ADMIN_UID]).includes(user.uid);
   canPainel = hasPerm('painel');
   canHistorico = hasPerm('historico');
   canMembros = hasPerm('membros');
