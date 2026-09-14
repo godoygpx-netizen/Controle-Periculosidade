@@ -405,6 +405,22 @@
       <input type="password" id="newEditorPassword" autocomplete="new-password">
       <button type="button" class="submit" id="createEditorBtn">Criar acesso de editor</button>
     </div>
+
+    <div id="editorsListSection" style="display:none; margin-top:22px;">
+      <div style="font-family:'Space Grotesk'; font-size:0.86rem; color:var(--text-muted); margin-bottom:8px;">Editores atuais</div>
+      <div id="editorsListWrap"></div>
+    </div>
+
+    <div class="add-form" id="myAccountForm" style="display:none; margin-top:26px; border-color:var(--steel);">
+      <label style="color:var(--steel); font-family:'Space Grotesk'; font-size:0.86rem;">Minha conta</label>
+      <label>Senha atual (para confirmar)</label>
+      <input type="password" id="myCurrentPassword" autocomplete="current-password">
+      <label>Novo e-mail <span style="color:var(--text-muted);">(deixe em branco para não trocar)</span></label>
+      <input type="email" id="myNewEmail" autocomplete="off">
+      <label>Nova senha <span style="color:var(--text-muted);">(deixe em branco para não trocar)</span></label>
+      <input type="password" id="myNewPassword" autocomplete="new-password">
+      <button type="button" class="submit" id="saveMyAccountBtn">Salvar alterações</button>
+    </div>
   </div>
 
   <div class="view" id="view-atividade">
@@ -414,7 +430,7 @@
 </main>
 
 <footer style="padding:14px 16px 20px; text-align:center; color:var(--text-muted); font-family:'IBM Plex Mono'; font-size:0.68rem;">
-  v27 · dados compartilhados (Firebase) · atualizado em 14/09/2026
+  v29 · dados compartilhados (Firebase) · atualizado em 14/09/2026
 </footer>
 
 <div class="overlay" id="overlay">
@@ -469,11 +485,11 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
-  getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, arrayUnion
+  getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, arrayUnion, arrayRemove, deleteField
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import {
   getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, sendPasswordResetEmail,
-  createUserWithEmailAndPassword
+  createUserWithEmailAndPassword, EmailAuthProvider, reauthenticateWithCredential, updateEmail, updatePassword
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
 const firebaseConfig = {
@@ -499,6 +515,7 @@ const CYCLE_START_DAY = 16; // ciclo vai do dia 16 ao dia 15 do mês seguinte
 let members = [];
 let signatures = [];
 let activityLog = [];
+let editorsDoc = { uids: [], emails: {} };
 let isEditor = false;
 let currentUserEmail = null;
 
@@ -562,6 +579,7 @@ function render(){
   renderHistorico();
   renderMembros();
   renderAtividade();
+  renderEditorsList();
 }
 
 function renderHeader(){
@@ -1114,6 +1132,41 @@ function renderAtividade(){
   `).join('');
 }
 
+function renderEditorsList(){
+  const wrap = document.getElementById('editorsListWrap');
+  if(!wrap) return;
+  const uids = editorsDoc.uids || [];
+  if(uids.length === 0){
+    wrap.innerHTML = `<div class="empty">Nenhum editor cadastrado.</div>`;
+    return;
+  }
+  wrap.innerHTML = uids.map(uid => {
+    const email = (editorsDoc.emails || {})[uid] || uid;
+    const isYou = currentUserEmail && email === currentUserEmail;
+    return `
+    <div class="member-manage-row">
+      <span>${escapeHtml(email)}${isYou ? ' <span style="color:var(--text-muted); font-size:0.76rem;">(você)</span>' : ''}</span>
+      <button class="del" onclick="removeEditor('${uid}')">remover</button>
+    </div>
+  `;
+  }).join('');
+}
+
+async function removeEditor(uid){
+  const uids = editorsDoc.uids || [];
+  if(uids.length <= 1){
+    alert('Não é possível remover o último editor — ninguém ficaria com acesso de edição.');
+    return;
+  }
+  const email = (editorsDoc.emails || {})[uid] || uid;
+  if(!confirm(`Remover o acesso de editor de ${email}? A conta de login continua existindo, mas essa pessoa não vai mais conseguir editar nada no app.`)) return;
+  await updateDoc(doc(db, 'config', 'editors'), {
+    uids: arrayRemove(uid),
+    [`emails.${uid}`]: deleteField()
+  });
+  logActivity('remove_editor', `Removeu o acesso de editor de ${email}`);
+}
+
 async function removeMember(id){
   if(!confirm('Remover este integrante? O histórico de assinaturas dele será mantido.')) return;
   const member = members.find(m => m.id === id);
@@ -1148,7 +1201,10 @@ document.getElementById('createEditorBtn').onclick = async () => {
   btn.textContent = 'Criando...';
   try{
     const cred = await createUserWithEmailAndPassword(authSecondary, email, password);
-    await updateDoc(doc(db, 'config', 'editors'), { uids: arrayUnion(cred.user.uid) });
+    await updateDoc(doc(db, 'config', 'editors'), {
+      uids: arrayUnion(cred.user.uid),
+      [`emails.${cred.user.uid}`]: email
+    });
     await signOut(authSecondary); // não deixa essa sessão secundária pendurada
     logActivity('add_editor', `Criou acesso de editor para ${email}`);
     emailInput.value = '';
@@ -1165,6 +1221,71 @@ document.getElementById('createEditorBtn').onclick = async () => {
   } finally {
     btn.disabled = false;
     btn.textContent = 'Criar acesso de editor';
+  }
+};
+
+document.getElementById('saveMyAccountBtn').onclick = async () => {
+  const user = auth.currentUser;
+  if(!user){ alert('Você precisa estar logado para alterar a conta.'); return; }
+
+  const currentPassword = document.getElementById('myCurrentPassword').value;
+  const newEmail = document.getElementById('myNewEmail').value.trim();
+  const newPassword = document.getElementById('myNewPassword').value;
+
+  if(!currentPassword){
+    alert('Digite sua senha atual para confirmar a alteração.');
+    return;
+  }
+  if(!newEmail && !newPassword){
+    alert('Preencha um novo e-mail e/ou uma nova senha.');
+    return;
+  }
+  if(newPassword && newPassword.length < 6){
+    alert('A nova senha precisa ter pelo menos 6 caracteres.');
+    return;
+  }
+
+  const btn = document.getElementById('saveMyAccountBtn');
+  btn.disabled = true;
+  btn.textContent = 'Salvando...';
+  try{
+    const credential = EmailAuthProvider.credential(user.email, currentPassword);
+    await reauthenticateWithCredential(user, credential);
+
+    const oldEmail = user.email;
+    if(newEmail && newEmail !== oldEmail){
+      await updateEmail(user, newEmail);
+      // mantém a lista de editores com o e-mail certo para exibição
+      const uids = editorsDoc.uids || [];
+      if(uids.includes(user.uid)){
+        await updateDoc(doc(db, 'config', 'editors'), { [`emails.${user.uid}`]: newEmail });
+      }
+    }
+    if(newPassword){
+      await updatePassword(user, newPassword);
+    }
+
+    currentUserEmail = user.email;
+    logActivity('update_account', `Atualizou a própria conta (${oldEmail}${newEmail && newEmail !== oldEmail ? ' → ' + newEmail : ''})`);
+    document.getElementById('myCurrentPassword').value = '';
+    document.getElementById('myNewEmail').value = '';
+    document.getElementById('myNewPassword').value = '';
+    alert('Conta atualizada com sucesso!');
+  } catch(e){
+    if(e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential'){
+      alert('Senha atual incorreta.');
+    } else if(e.code === 'auth/email-already-in-use'){
+      alert('Já existe uma conta com esse e-mail.');
+    } else if(e.code === 'auth/invalid-email'){
+      alert('E-mail inválido.');
+    } else if(e.code === 'auth/requires-recent-login'){
+      alert('Por segurança, saia e entre de novo antes de tentar essa alteração.');
+    } else {
+      alert('Não foi possível salvar as alterações. Tente novamente.');
+    }
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Salvar alterações';
   }
 };
 
@@ -1196,6 +1317,8 @@ function applyEditorUI(){
   authBtn.textContent = isEditor ? 'Sair (editor)' : 'Entrar';
   authBtn.classList.toggle('is-editor', isEditor);
   document.querySelectorAll('.add-form').forEach(f => f.style.display = isEditor ? 'flex' : 'none');
+  const editorsSection = document.getElementById('editorsListSection');
+  if(editorsSection) editorsSection.style.display = isEditor ? 'block' : 'none';
 }
 applyEditorUI();
 
@@ -1259,6 +1382,13 @@ onSnapshot(collection(db, 'activity_log'), (snap) => {
   render();
 }, (err) => console.error('Erro ao ler atividade:', err));
 
+onSnapshot(doc(db, 'config', 'editors'), (snap) => {
+  editorsDoc = snap.exists() ? snap.data() : { uids: [], emails: {} };
+  if(!editorsDoc.uids) editorsDoc.uids = [];
+  if(!editorsDoc.emails) editorsDoc.emails = {};
+  render();
+}, (err) => console.error('Erro ao ler lista de editores:', err));
+
 // funções referenciadas via onclick="" no HTML gerado precisam estar
 // no escopo global, já que este script agora é um module
 window.openSignSelf = openSignSelf;
@@ -1266,6 +1396,7 @@ window.openSubstitute = openSubstitute;
 window.openEditRecord = openEditRecord;
 window.deleteRecord = deleteRecord;
 window.removeMember = removeMember;
+window.removeEditor = removeEditor;
 window.openMemberHistory = openMemberHistory;
 
 render();
