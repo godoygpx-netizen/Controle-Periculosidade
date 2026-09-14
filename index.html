@@ -431,7 +431,7 @@
 </main>
 
 <footer style="padding:14px 16px 20px; text-align:center; color:var(--text-muted); font-family:'IBM Plex Mono'; font-size:0.68rem;">
-  v32 · dados compartilhados (Firebase) · atualizado em 14/09/2026
+  v33 · dados compartilhados (Firebase) · atualizado em 14/09/2026
 </footer>
 
 <div class="overlay" id="overlay">
@@ -713,17 +713,24 @@ function openSignSelf(memberId){
   const confirmBtn = document.getElementById('confirmSelfBtn');
   confirmBtn.style.display = 'block';
   confirmBtn.textContent = 'Registrar assinatura';
-  confirmBtn.onclick = () => {
+  confirmBtn.onclick = async () => {
     const date = document.getElementById('signDateInput').value || todayISO();
     const aircraft = document.getElementById('aircraftInput').value.trim();
     if(!aircraft){
       alert('Informe a aeronave antes de registrar.');
       return;
     }
-    registerSignature(memberId, memberId, date, aircraft);
-    logActivity('sign', `${member.name} assinou (${aircraft}) — ${fmtDate(date)}`);
-    closeSheet();
-    render();
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = 'Registrando...';
+    try{
+      await registerSignature(memberId, memberId, date, aircraft);
+      logActivity('sign', `${member.name} assinou (${aircraft}) — ${fmtDate(date)}`);
+      closeSheet();
+    } catch(e){
+      alert('Não foi possível registrar (' + (e.code || e.message || 'erro desconhecido') + '). Verifique se você ainda está logado como editor.');
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = 'Registrar assinatura';
+    }
   };
 
   document.getElementById('overlay').classList.add('active');
@@ -766,7 +773,7 @@ function openSubstitute(memberId){
   document.getElementById('overlay').classList.add('active');
 }
 
-function confirmSubstitute(substituteId){
+async function confirmSubstitute(substituteId){
   const aircraft = document.getElementById('aircraftInput').value.trim();
   if(!aircraft){
     alert('Informe a aeronave antes de confirmar.');
@@ -778,12 +785,15 @@ function confirmSubstitute(substituteId){
     return;
   }
   const date = document.getElementById('signDateInput').value || todayISO();
-  registerSignature(pendingSlotMember, substituteId, date, aircraft, reason);
-  const origMember = members.find(m => m.id === pendingSlotMember);
-  const subMember = members.find(m => m.id === substituteId);
-  logActivity('substitute', `${subMember ? subMember.name : '?'} assinou no lugar de ${origMember ? origMember.name : '?'} (${aircraft}) — ${fmtDate(date)}`);
-  closeSheet();
-  render();
+  try{
+    await registerSignature(pendingSlotMember, substituteId, date, aircraft, reason);
+    const origMember = members.find(m => m.id === pendingSlotMember);
+    const subMember = members.find(m => m.id === substituteId);
+    logActivity('substitute', `${subMember ? subMember.name : '?'} assinou no lugar de ${origMember ? origMember.name : '?'} (${aircraft}) — ${fmtDate(date)}`);
+    closeSheet();
+  } catch(e){
+    alert('Não foi possível confirmar (' + (e.code || e.message || 'erro desconhecido') + '). Verifique se você ainda está logado como editor.');
+  }
 }
 
 function openEditRecord(recordId){
@@ -825,9 +835,17 @@ function openEditRecord(recordId){
       }
       updates.reason = reason;
     }
-    await updateDoc(doc(db, 'signatures', recordId), updates);
-    logActivity('edit', `Editou assinatura de ${slotMember ? slotMember.name : '?'} — ${fmtDate(date)}, ${aircraft}`);
-    closeSheet();
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = 'Salvando...';
+    try{
+      await updateDoc(doc(db, 'signatures', recordId), updates);
+      logActivity('edit', `Editou assinatura de ${slotMember ? slotMember.name : '?'} — ${fmtDate(date)}, ${aircraft}`);
+      closeSheet();
+    } catch(e){
+      alert('Não foi possível salvar (' + (e.code || e.message || 'erro desconhecido') + '). Verifique se você ainda está logado como editor.');
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = 'Salvar alterações';
+    }
   };
 
   document.getElementById('overlay').classList.add('active');
@@ -836,10 +854,14 @@ function openEditRecord(recordId){
 async function deleteRecord(recordId){
   if(!confirm('Excluir esta assinatura? Essa ação não pode ser desfeita.')) return;
   const rec = signatures.find(s => s.id === recordId);
-  await deleteDoc(doc(db, 'signatures', recordId));
-  if(rec){
-    const slotMember = members.find(m => m.id === rec.slotMemberId);
-    logActivity('delete', `Excluiu assinatura de ${slotMember ? slotMember.name : '?'} — ${fmtDate(rec.date)}`);
+  try{
+    await deleteDoc(doc(db, 'signatures', recordId));
+    if(rec){
+      const slotMember = members.find(m => m.id === rec.slotMemberId);
+      logActivity('delete', `Excluiu assinatura de ${slotMember ? slotMember.name : '?'} — ${fmtDate(rec.date)}`);
+    }
+  } catch(e){
+    alert('Não foi possível excluir (' + (e.code || e.message || 'erro desconhecido') + '). Verifique se você ainda está logado como editor.');
   }
 }
 
@@ -1174,17 +1196,25 @@ async function removeEditor(uid){
 async function removeMember(id){
   if(!confirm('Remover este integrante? O histórico de assinaturas dele será mantido.')) return;
   const member = members.find(m => m.id === id);
-  await deleteDoc(doc(db, 'members', id));
-  logActivity('remove_member', `Removeu ${member ? member.name : '?'} dos integrantes`);
+  try{
+    await deleteDoc(doc(db, 'members', id));
+    logActivity('remove_member', `Removeu ${member ? member.name : '?'} dos integrantes`);
+  } catch(e){
+    alert('Não foi possível remover (' + (e.code || e.message || 'erro desconhecido') + '). Verifique se você ainda está logado como editor.');
+  }
 }
 
 document.getElementById('addMemberBtn').onclick = async () => {
   const nameInput = document.getElementById('newName');
   const name = nameInput.value.trim();
   if(!name){ alert('Digite o nome do integrante.'); return; }
-  await addDoc(collection(db, 'members'), { name });
-  logActivity('add_member', `Cadastrou ${name} como integrante`);
-  nameInput.value = '';
+  try{
+    await addDoc(collection(db, 'members'), { name });
+    logActivity('add_member', `Cadastrou ${name} como integrante`);
+    nameInput.value = '';
+  } catch(e){
+    alert('Não foi possível cadastrar (' + (e.code || e.message || 'erro desconhecido') + '). Verifique se você ainda está logado como editor.');
+  }
 };
 
 document.getElementById('createEditorBtn').onclick = async () => {
