@@ -321,7 +321,7 @@
     font-size:0.88rem;
     resize:vertical;
   }
-  .sheet input[type=email], .sheet input[type=password]{
+  .sheet input[type=email], .sheet input[type=password], .sheet input[type=text]{
     width:100%;
     background:var(--bg);
     border:1px solid var(--line-strong);
@@ -381,6 +381,10 @@
       <label for="histCycleFilter">Período (ciclo 16 a 15)</label>
       <select id="histCycleFilter"></select>
     </div>
+    <div class="rank-config" id="histAircraftFilterRow">
+      <label for="histAircraftFilter">Aeronave</label>
+      <select id="histAircraftFilter"></select>
+    </div>
     <div id="histWrap"></div>
   </div>
 
@@ -396,7 +400,7 @@
 </main>
 
 <footer style="padding:14px 16px 20px; text-align:center; color:var(--text-muted); font-family:'IBM Plex Mono'; font-size:0.68rem;">
-  v22 · dados compartilhados (Firebase) · atualizado em 14/09/2026
+  v24 · dados compartilhados (Firebase) · atualizado em 14/09/2026
 </footer>
 
 <div class="overlay" id="overlay">
@@ -406,6 +410,10 @@
     <div class="date-row">
       <label>Data da assinatura</label>
       <input type="date" id="signDateInput">
+    </div>
+    <div class="date-row">
+      <label>Aeronave</label>
+      <input type="text" id="aircraftInput" placeholder="Ex.: PT-ABC">
     </div>
     <div class="date-row" id="reasonRow" style="display:none;">
       <label>Justificativa da substituição</label>
@@ -548,7 +556,7 @@ function memberRowHtml(m){
   let metaLine = '';
   if(st.state === 'ok'){
     pillClass='ok'; pillText = `válida até ${fmtDate(st.rec.validUntil)}`;
-    metaLine = `assinou em ${fmtDate(st.rec.date)}`;
+    metaLine = `assinou em ${fmtDate(st.rec.date)}${st.rec.aircraft ? ` · ${escapeHtml(st.rec.aircraft)}` : ''}`;
   } else if(st.state === 'warn'){
     pillClass='warn'; pillText = `vencida desde ${fmtDate(st.rec.validUntil)}`;
   } else {
@@ -625,8 +633,8 @@ function escapeHtml(str){
   return str.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-async function registerSignature(slotMemberId, signedBy, date, reason){
-  const rec = { slotMemberId, signedBy, date, validUntil: cycleEnd(date) };
+async function registerSignature(slotMemberId, signedBy, date, aircraft, reason){
+  const rec = { slotMemberId, signedBy, date, aircraft, validUntil: cycleEnd(date) };
   if(reason) rec.reason = reason;
   await addDoc(collection(db, 'signatures'), rec);
 }
@@ -640,8 +648,9 @@ function openSignSelf(memberId){
   const member = members.find(m => m.id === memberId);
 
   document.getElementById('sheetTitle').textContent = `Registrar assinatura de ${member.name}`;
-  document.getElementById('sheetSub').textContent = 'Informe a data em que a assinatura foi feita.';
+  document.getElementById('sheetSub').textContent = 'Informe a data e a aeronave.';
   document.getElementById('signDateInput').value = todayISO();
+  document.getElementById('aircraftInput').value = '';
   document.getElementById('reasonRow').style.display = 'none';
   document.getElementById('reasonInput').value = '';
   document.getElementById('candidateList').innerHTML = '';
@@ -651,7 +660,12 @@ function openSignSelf(memberId){
   confirmBtn.textContent = 'Registrar assinatura';
   confirmBtn.onclick = () => {
     const date = document.getElementById('signDateInput').value || todayISO();
-    registerSignature(memberId, memberId, date);
+    const aircraft = document.getElementById('aircraftInput').value.trim();
+    if(!aircraft){
+      alert('Informe a aeronave antes de registrar.');
+      return;
+    }
+    registerSignature(memberId, memberId, date, aircraft);
     closeSheet();
     render();
   };
@@ -675,9 +689,10 @@ function openSubstitute(memberId){
 
   document.getElementById('sheetTitle').textContent = `Substituir ${member.name}`;
   document.getElementById('sheetSub').textContent = candidates.length
-    ? `Escolha a data e o substituto (sugestão por menor número de assinaturas):`
+    ? `Escolha a data, a aeronave e o substituto (sugestão por menor número de assinaturas):`
     : `Não há outros integrantes cadastrados.`;
   document.getElementById('signDateInput').value = todayISO();
+  document.getElementById('aircraftInput').value = '';
   document.getElementById('reasonRow').style.display = 'block';
   document.getElementById('reasonInput').value = '';
   document.getElementById('confirmSelfBtn').style.display = 'none';
@@ -696,13 +711,18 @@ function openSubstitute(memberId){
 }
 
 function confirmSubstitute(substituteId){
+  const aircraft = document.getElementById('aircraftInput').value.trim();
+  if(!aircraft){
+    alert('Informe a aeronave antes de confirmar.');
+    return;
+  }
   const reason = document.getElementById('reasonInput').value.trim();
   if(!reason){
     alert('Preencha a justificativa da substituição antes de confirmar.');
     return;
   }
   const date = document.getElementById('signDateInput').value || todayISO();
-  registerSignature(pendingSlotMember, substituteId, date, reason);
+  registerSignature(pendingSlotMember, substituteId, date, aircraft, reason);
   closeSheet();
   render();
 }
@@ -719,9 +739,10 @@ function openEditRecord(recordId){
 
   document.getElementById('sheetTitle').textContent = `Editar assinatura de ${slotMember ? slotMember.name : '?'}`;
   document.getElementById('sheetSub').textContent = isSubstitute
-    ? `Assinada por ${signer ? signer.name : '?'} no lugar do titular. Ajuste a data e a justificativa.`
-    : 'Ajuste a data desta assinatura.';
+    ? `Assinada por ${signer ? signer.name : '?'} no lugar do titular. Ajuste a data, a aeronave e a justificativa.`
+    : 'Ajuste a data e a aeronave desta assinatura.';
   document.getElementById('signDateInput').value = rec.date;
+  document.getElementById('aircraftInput').value = rec.aircraft || '';
   document.getElementById('reasonRow').style.display = isSubstitute ? 'block' : 'none';
   document.getElementById('reasonInput').value = rec.reason || '';
   document.getElementById('candidateList').innerHTML = '';
@@ -731,7 +752,12 @@ function openEditRecord(recordId){
   confirmBtn.textContent = 'Salvar alterações';
   confirmBtn.onclick = async () => {
     const date = document.getElementById('signDateInput').value || rec.date;
-    const updates = { date, validUntil: cycleEnd(date) };
+    const aircraft = document.getElementById('aircraftInput').value.trim();
+    if(!aircraft){
+      alert('Informe a aeronave antes de salvar.');
+      return;
+    }
+    const updates = { date, aircraft, validUntil: cycleEnd(date) };
     if(isSubstitute){
       const reason = document.getElementById('reasonInput').value.trim();
       if(!reason){
@@ -847,6 +873,7 @@ function openMemberHistory(memberId){
       return `<div class="hist-item">
         <div class="d">${fmtDate(s.date)}</div>
         <div>${line}</div>
+        ${s.aircraft ? `<div style="margin-top:4px; color:var(--steel); font-size:0.82rem; font-family:'IBM Plex Mono';">✈ ${escapeHtml(s.aircraft)}</div>` : ''}
         ${s.reason ? `<div style="margin-top:4px; color:var(--text-muted); font-size:0.82rem;">${escapeHtml(s.reason)}</div>` : ''}
         ${isEditor ? `
         <div class="hist-actions">
@@ -868,6 +895,7 @@ document.getElementById('memberHistOverlay').addEventListener('click', (e) => {
 function renderHistorico(){
   const wrap = document.getElementById('histWrap');
   const filterEl = document.getElementById('histCycleFilter');
+  const aircraftEl = document.getElementById('histAircraftFilter');
 
   // opções de ciclo a partir dos períodos que já têm assinatura registrada
   const cycles = [...new Set(signatures.map(s => s.validUntil))].sort((a,b) => b.localeCompare(a));
@@ -876,13 +904,21 @@ function renderHistorico(){
     cycles.map(c => `<option value="${c}">${cycleLabel(c)}</option>`).join('');
   if(cycles.includes(currentValue)) filterEl.value = currentValue;
 
+  // opções de aeronave a partir das que já têm assinatura registrada
+  const aircrafts = [...new Set(signatures.map(s => s.aircraft).filter(Boolean))].sort((a,b) => a.localeCompare(b, 'pt-BR'));
+  const currentAircraft = aircraftEl.value;
+  aircraftEl.innerHTML = `<option value="">Todas as aeronaves</option>` +
+    aircrafts.map(a => `<option value="${escapeHtml(a)}">${escapeHtml(a)}</option>`).join('');
+  if(aircrafts.includes(currentAircraft)) aircraftEl.value = currentAircraft;
+
   const selected = filterEl.value;
+  const selectedAircraft = aircraftEl.value;
   const all = signatures
-    .filter(s => !selected || s.validUntil === selected)
+    .filter(s => (!selected || s.validUntil === selected) && (!selectedAircraft || s.aircraft === selectedAircraft))
     .sort((a,b) => b.date.localeCompare(a.date));
 
   if(all.length === 0){
-    wrap.innerHTML = `<div class="empty">${selected ? 'Nenhuma assinatura neste período.' : 'Nenhuma assinatura registrada ainda.'}</div>`;
+    wrap.innerHTML = `<div class="empty">${selected || selectedAircraft ? 'Nenhuma assinatura com esse filtro.' : 'Nenhuma assinatura registrada ainda.'}</div>`;
     return;
   }
   wrap.innerHTML = all.map(s => {
@@ -895,6 +931,7 @@ function renderHistorico(){
     return `<div class="hist-item">
       <div class="d">${fmtDate(s.date)}</div>
       <div>${line}</div>
+      ${s.aircraft ? `<div style="margin-top:4px; color:var(--steel); font-size:0.82rem; font-family:'IBM Plex Mono';">✈ ${escapeHtml(s.aircraft)}</div>` : ''}
       ${s.reason ? `<div style="margin-top:4px; color:var(--text-muted); font-size:0.82rem;">${escapeHtml(s.reason)}</div>` : ''}
       ${isEditor ? `
       <div class="hist-actions">
@@ -1024,6 +1061,7 @@ document.getElementById('addMemberBtn').onclick = async () => {
 };
 
 document.getElementById('histCycleFilter').addEventListener('change', renderHistorico);
+document.getElementById('histAircraftFilter').addEventListener('change', renderHistorico);
 
 document.getElementById('highlightCount').addEventListener('change', (e) => {
   let n = parseInt(e.target.value, 10);
