@@ -394,7 +394,7 @@
 </main>
 
 <footer style="padding:14px 16px 20px; text-align:center; color:var(--text-muted); font-family:'IBM Plex Mono'; font-size:0.68rem;">
-  v18 · dados compartilhados (Firebase) · atualizado em 13/09/2026
+  v19 · dados compartilhados (Firebase) · atualizado em 13/09/2026
 </footer>
 
 <div class="overlay" id="overlay">
@@ -483,12 +483,12 @@ function fmtDate(iso){
   return `${d}/${m}/${y}`;
 }
 
-// latest signature record that covers this member: either their own slot
-// was signed (by them or by a substitute), or they personally went and
-// signed — as themselves or while substituting for someone else, which
-// counts as their own signature too.
+// latest signature record that this member personally signed — either
+// their own slot, or while substituting for someone else (which counts as
+// their own signature too). Being substituted by someone ELSE does NOT
+// count here: the substituted person still needs to sign personally.
 function latestFor(memberId){
-  const recs = signatures.filter(s => s.slotMemberId === memberId || s.signedBy === memberId)
+  const recs = signatures.filter(s => s.signedBy === memberId)
     .sort((a,b) => b.validUntil.localeCompare(a.validUntil) || b.date.localeCompare(a.date));
   return recs[0] || null;
 }
@@ -536,12 +536,7 @@ function memberRowHtml(m){
   let metaLine = '';
   if(st.state === 'ok'){
     pillClass='ok'; pillText = `válida até ${fmtDate(st.rec.validUntil)}`;
-    if(st.rec.signedBy !== m.id){
-      const sub = members.find(x=>x.id===st.rec.signedBy);
-      metaLine = `<span class="covered">coberta por ${sub ? sub.name : 'substituto'}</span>`;
-    } else {
-      metaLine = `assinou em ${fmtDate(st.rec.date)}`;
-    }
+    metaLine = `assinou em ${fmtDate(st.rec.date)}`;
   } else if(st.state === 'warn'){
     pillClass='warn'; pillText = `vencida desde ${fmtDate(st.rec.validUntil)}`;
   } else {
@@ -858,10 +853,6 @@ function buildSummaryText(){
     let line;
     if(st.state === 'ok'){
       line = `✅ *${m.name}* — válida até ${fmtDate(st.rec.validUntil)}`;
-      if(st.rec.signedBy !== m.id){
-        const sub = members.find(x=>x.id===st.rec.signedBy);
-        line += ` (coberta por ${sub ? sub.name : 'substituto'})`;
-      }
     } else if(st.state === 'warn'){
       line = `⚠️ *${m.name}* — vencida desde ${fmtDate(st.rec.validUntil)}`;
     } else {
