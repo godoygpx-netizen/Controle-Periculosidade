@@ -394,7 +394,7 @@
 </main>
 
 <footer style="padding:14px 16px 20px; text-align:center; color:var(--text-muted); font-family:'IBM Plex Mono'; font-size:0.68rem;">
-  v15 · dados compartilhados (Firebase) · atualizado em 13/09/2026
+  v16 · dados compartilhados (Firebase) · atualizado em 13/09/2026
 </footer>
 
 <div class="overlay" id="overlay">
@@ -500,6 +500,24 @@ function lastSignedDateBy(memberId){
   const recs = signatures.filter(s => s.signedBy === memberId);
   if(recs.length === 0) return null;
   return recs.reduce((max, r) => r.date > max ? r.date : max, recs[0].date);
+}
+
+// Sorteio: quando duas pessoas empatam em tudo (mesma quantidade de
+// assinaturas e mesma data da última), a ordem entre elas é decidida por
+// um sorteio "fixo" para o ciclo atual — não é alfabético, mas também não
+// muda a cada vez que a página é aberta, pois todos precisam ver o mesmo
+// resultado. No próximo ciclo (dia 16), o sorteio é refeito.
+function hash32(str){
+  let h = 2166136261;
+  for(let i = 0; i < str.length; i++){
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+function drawKey(memberId){
+  const seed = cycleEnd(todayISO()); // muda automaticamente a cada ciclo
+  return hash32(seed + '|' + memberId);
 }
 
 function statusFor(memberId){
@@ -654,7 +672,7 @@ function openSubstitute(memberId){
       const da = a.lastDate || '0000-00-00';
       const db = b.lastDate || '0000-00-00';
       if(da !== db) return da.localeCompare(db);
-      return a.name.localeCompare(b.name, 'pt-BR');
+      return drawKey(a.id) - drawKey(b.id);
     });
 
   document.getElementById('sheetTitle').textContent = `Substituir ${member.name}`;
@@ -768,7 +786,7 @@ function renderRanking(){
       const da = a.lastDate || '0000-00-00';
       const db = b.lastDate || '0000-00-00';
       if(da !== db) return da.localeCompare(db);
-      return a.name.localeCompare(b.name, 'pt-BR');
+      return drawKey(a.id) - drawKey(b.id);
     });
 
   let highlightN = parseInt(localStorage.getItem('peric_rank_highlight_n'), 10);
@@ -776,23 +794,33 @@ function renderRanking(){
   if(highlightN > ranked.length) highlightN = ranked.length;
   document.getElementById('highlightCount').value = highlightN;
 
+  // marca quem está empatado em quantidade + última data com outra pessoa,
+  // já que a posição entre elas foi decidida por sorteio, não por mérito
+  const tieCounts = {};
+  ranked.forEach(m => {
+    const key = `${m.count}|${m.lastDate || ''}`;
+    tieCounts[key] = (tieCounts[key] || 0) + 1;
+  });
+
   wrap.innerHTML = `<section class="team">
     <div class="team-tab" style="border-left:4px solid var(--amber);">
       <span class="name">Prioridade para a próxima assinatura</span>
       <span class="count mono">${ranked.length} integrantes</span>
     </div>
-    ${ranked.map((m, idx) => `
+    ${ranked.map((m, idx) => {
+      const tied = tieCounts[`${m.count}|${m.lastDate || ''}`] > 1;
+      return `
       <div class="rank-row${idx < highlightN ? ' top1' : ''}">
         <div class="rank-pos">${idx+1}º</div>
         <div class="rank-info">
           <div class="nm">${escapeHtml(m.name)}</div>
           <div class="meta" style="font-size:0.72rem; color:${idx < highlightN ? 'var(--amber)' : 'var(--text-muted)'}; font-family:'IBM Plex Mono'; margin-top:2px;">
-            ${idx < highlightN ? 'prioridade · ' : ''}${m.lastDate ? `última em ${fmtDate(m.lastDate)}` : 'nunca assinou'}
+            ${idx < highlightN ? 'prioridade · ' : ''}${m.lastDate ? `última em ${fmtDate(m.lastDate)}` : 'nunca assinou'}${tied ? ' · sorteio' : ''}
           </div>
         </div>
         <div class="rank-count">${m.count}</div>
       </div>
-    `).join('')}
+    `;}).join('')}
   </section>`;
 }
 
@@ -879,7 +907,7 @@ function buildRankingText(){
       const da = a.lastDate || '0000-00-00';
       const db = b.lastDate || '0000-00-00';
       if(da !== db) return da.localeCompare(db);
-      return a.name.localeCompare(b.name, 'pt-BR');
+      return drawKey(a.id) - drawKey(b.id);
     });
 
   let highlightN = parseInt(localStorage.getItem('peric_rank_highlight_n'), 10);
