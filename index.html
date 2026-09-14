@@ -449,9 +449,7 @@
 
     <div class="add-form" id="newEditorForm" style="display:none; margin-top:26px; border-color:var(--amber);">
       <label style="color:var(--amber); font-family:'Space Grotesk'; font-size:0.86rem;">Criar novo editor</label>
-      <label>Usuário (para entrar no app)</label>
-      <input type="text" id="newEditorUsername" autocomplete="off" placeholder="ex.: gpgodoy">
-      <label>E-mail (para recuperar a senha, se precisar)</label>
+      <label>E-mail</label>
       <input type="email" id="newEditorEmail" autocomplete="off">
       <label>Senha (mínimo 6 caracteres)</label>
       <input type="password" id="newEditorPassword" autocomplete="new-password">
@@ -494,7 +492,7 @@
 </div>
 
 <footer style="padding:14px 16px 20px; text-align:center; color:var(--text-muted); font-family:'IBM Plex Mono'; font-size:0.68rem;">
-  v48 · dados compartilhados (Firebase) · atualizado em 14/09/2026
+  v47 · dados compartilhados (Firebase) · atualizado em 14/09/2026
 </footer>
 
 <div class="overlay" id="overlay">
@@ -526,14 +524,10 @@
 <div class="overlay" id="authOverlay">
   <div class="sheet">
     <h3 id="authTitle">Entrar</h3>
-    <p class="sub" id="authSub">Entre com seu usuário para acessar o app.</p>
+    <p class="sub" id="authSub">Entre com sua conta para acessar o app.</p>
     <div class="date-row">
-      <label id="authUserLabel">Usuário</label>
-      <input type="text" id="authEmail" autocomplete="username" placeholder="ex.: gpgodoy">
-    </div>
-    <div class="date-row" id="signupEmailRow" style="display:none;">
-      <label>E-mail (para recuperar a senha, se precisar)</label>
-      <input type="email" id="signupEmail" autocomplete="email">
+      <label>E-mail</label>
+      <input type="email" id="authEmail" autocomplete="username">
     </div>
     <div class="date-row">
       <label>Senha</label>
@@ -591,8 +585,7 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
-  getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, arrayUnion, arrayRemove, deleteField,
-  setDoc, getDoc, query, where, getDocs
+  getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, arrayUnion, arrayRemove, deleteField
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import {
   getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, sendPasswordResetEmail,
@@ -627,7 +620,6 @@ let editorsDoc = { uids: [], emails: {} };
 let isEditor = false; // autenticado E autorizado (está na lista de editores)
 let isAuthenticated = false; // só logado, pode ou não estar autorizado
 let currentUserEmail = null;
-let currentUsername = null;
 const SUPER_ADMIN_UID = "2lPeo5B0uSgni43kAfkHX81Nt522";
 let isSuperAdmin = false;
 let accessRequests = [];
@@ -1551,18 +1543,12 @@ document.getElementById('addMemberBtn').onclick = async () => {
 };
 
 document.getElementById('createEditorBtn').onclick = async () => {
-  const usernameInput = document.getElementById('newEditorUsername');
   const emailInput = document.getElementById('newEditorEmail');
   const passwordInput = document.getElementById('newEditorPassword');
-  const username = usernameInput.value.trim().toLowerCase();
   const email = emailInput.value.trim();
   const password = passwordInput.value;
-  if(!username || !email || !password){
-    alert('Preencha o usuário, o e-mail e a senha do novo editor.');
-    return;
-  }
-  if(!/^[a-z0-9._-]+$/.test(username)){
-    alert('Use só letras minúsculas, números, ponto, traço ou underline no usuário.');
+  if(!email || !password){
+    alert('Preencha o e-mail e a senha do novo editor.');
     return;
   }
   if(password.length < 6){
@@ -1578,24 +1564,17 @@ document.getElementById('createEditorBtn').onclick = async () => {
     membros: document.getElementById('newEditorPermMembros').checked
   };
   try{
-    const existing = await getDoc(doc(db, 'usernames', username));
-    if(existing.exists()){
-      alert('Esse usuário já está em uso. Escolha outro.');
-      return;
-    }
     const cred = await createUserWithEmailAndPassword(authSecondary, email, password);
-    await setDoc(doc(db, 'usernames', username), { uid: cred.user.uid, email });
     await updateDoc(doc(db, 'config', 'editors'), {
       uids: arrayUnion(cred.user.uid),
       [`emails.${cred.user.uid}`]: email,
       [`perms.${cred.user.uid}`]: perms
     });
     await signOut(authSecondary); // não deixa essa sessão secundária pendurada
-    logActivity('add_editor', `Criou acesso de editor para ${username} (${Object.keys(perms).filter(k=>perms[k]).join(', ') || 'nenhuma área'})`);
-    usernameInput.value = '';
+    logActivity('add_editor', `Criou acesso de editor para ${email} (${Object.keys(perms).filter(k=>perms[k]).join(', ') || 'nenhuma área'})`);
     emailInput.value = '';
     passwordInput.value = '';
-    alert(`Editor criado! ${username} já pode entrar com a senha cadastrada.`);
+    alert(`Editor criado! ${email} já pode entrar com a senha cadastrada.`);
   } catch(e){
     if(e.code === 'auth/email-already-in-use'){
       alert('Já existe uma conta com esse e-mail.');
@@ -1723,9 +1702,8 @@ function applyEditorUI(){
   authBtn.classList.toggle('is-editor', isEditor);
   const loggedInEmail = document.getElementById('loggedInEmail');
   if(loggedInEmail){
-    const label = currentUsername || currentUserEmail;
-    if(isAuthenticated && label){
-      loggedInEmail.textContent = label;
+    if(isAuthenticated && currentUserEmail){
+      loggedInEmail.textContent = currentUserEmail;
       loggedInEmail.style.display = 'block';
     } else {
       loggedInEmail.style.display = 'none';
@@ -1792,22 +1770,16 @@ document.getElementById('gateLoginBtn').addEventListener('click', () => {
 });
 document.getElementById('authCancelBtn').onclick = () => authOverlay.classList.remove('active');
 document.getElementById('forgotPasswordLink').onclick = async () => {
-  const username = document.getElementById('authEmail').value.trim().toLowerCase();
-  if(!username){
-    alert('Digite seu usuário no campo acima antes de tocar em "Esqueci minha senha".');
+  const email = document.getElementById('authEmail').value.trim();
+  if(!email){
+    alert('Digite o e-mail cadastrado no campo acima antes de tocar em "Esqueci minha senha".');
     return;
   }
   try{
-    const userDoc = await getDoc(doc(db, 'usernames', username));
-    if(!userDoc.exists()){
-      alert('Usuário não encontrado.');
-      return;
-    }
-    const email = userDoc.data().email;
     await sendPasswordResetEmail(auth, email);
-    alert('Enviamos um link de redefinição de senha para o e-mail cadastrado. Confira também a caixa de spam.');
+    alert('Enviamos um link de redefinição de senha para ' + email + '. Confira também a caixa de spam.');
   } catch(e){
-    alert('Não foi possível enviar o e-mail. Tente de novo.');
+    alert('Não foi possível enviar o e-mail. Confira se o endereço está certo e tente de novo.');
   }
 };
 authOverlay.addEventListener('click', (e) => { if(e.target.id === 'authOverlay') authOverlay.classList.remove('active'); });
@@ -1817,11 +1789,8 @@ function setAuthMode(mode){
   const isSignup = mode === 'signup';
   document.getElementById('authTitle').textContent = isSignup ? 'Criar conta' : 'Entrar';
   document.getElementById('authSub').textContent = isSignup
-    ? 'Escolha um usuário e senha. Depois de criar, o pedido de acesso é enviado para um editor aprovar.'
-    : 'Entre com seu usuário para acessar o app.';
-  document.getElementById('authUserLabel').textContent = 'Usuário';
-  document.getElementById('authEmail').placeholder = 'ex.: gpgodoy';
-  document.getElementById('signupEmailRow').style.display = isSignup ? 'block' : 'none';
+    ? 'Crie seu acesso com e-mail e senha. Depois de criar, o pedido de acesso é enviado para um editor aprovar.'
+    : 'Entre com sua conta para acessar o app.';
   document.getElementById('authSubmitBtn').textContent = isSignup ? 'Criar conta e pedir acesso' : 'Entrar';
   document.getElementById('forgotPasswordLink').style.display = isSignup ? 'none' : 'block';
   document.getElementById('signupToggleLink').textContent = isSignup ? 'Já tem conta? Entrar' : 'Não tem conta? Criar cadastro';
@@ -1831,33 +1800,20 @@ document.getElementById('signupToggleLink').onclick = () => {
 };
 
 document.getElementById('authSubmitBtn').onclick = async () => {
-  const username = document.getElementById('authEmail').value.trim().toLowerCase();
+  const email = document.getElementById('authEmail').value.trim();
   const password = document.getElementById('authPassword').value;
-  if(!username || !password){ alert('Preencha o usuário e a senha.'); return; }
+  if(!email || !password){ alert('Preencha e-mail e senha.'); return; }
 
   if(authMode === 'signup'){
-    const email = document.getElementById('signupEmail').value.trim();
-    if(!email){ alert('Informe um e-mail (só é usado se você precisar recuperar a senha).'); return; }
-    if(!/^[a-z0-9._-]+$/.test(username)){
-      alert('Use só letras minúsculas, números, ponto, traço ou underline no usuário.');
-      return;
-    }
     if(password.length < 6){ alert('A senha precisa ter pelo menos 6 caracteres.'); return; }
     const btn = document.getElementById('authSubmitBtn');
     btn.disabled = true;
     btn.textContent = 'Criando...';
     try{
-      const existing = await getDoc(doc(db, 'usernames', username));
-      if(existing.exists()){
-        alert('Esse usuário já está em uso. Escolha outro.');
-        return;
-      }
       const cred = await createUserWithEmailAndPassword(auth, email, password);
-      await setDoc(doc(db, 'usernames', username), { uid: cred.user.uid, email });
       await addDoc(collection(db, 'access_requests'), {
         uid: cred.user.uid,
         email: cred.user.email,
-        username,
         at: new Date().toISOString()
       });
       authOverlay.classList.remove('active');
@@ -1881,15 +1837,10 @@ document.getElementById('authSubmitBtn').onclick = async () => {
   }
 
   try{
-    const userDoc = await getDoc(doc(db, 'usernames', username));
-    if(!userDoc.exists()){
-      alert('Usuário não encontrado.');
-      return;
-    }
-    await signInWithEmailAndPassword(auth, userDoc.data().email, password);
+    await signInWithEmailAndPassword(auth, email, password);
     authOverlay.classList.remove('active');
   } catch(e){
-    alert('Usuário ou senha incorretos.');
+    alert('E-mail ou senha incorretos.');
   }
 };
 
@@ -1932,15 +1883,6 @@ function recomputeAuthorization(){
   updateActivitySubscription();
   updateAccessRequestsSubscription();
   render();
-
-  if(user){
-    getDocs(query(collection(db, 'usernames'), where('uid', '==', user.uid))).then(snap => {
-      currentUsername = snap.empty ? null : snap.docs[0].id;
-      applyEditorUI();
-    }).catch(() => { currentUsername = null; });
-  } else {
-    currentUsername = null;
-  }
 }
 
 onAuthStateChanged(auth, (user) => {
