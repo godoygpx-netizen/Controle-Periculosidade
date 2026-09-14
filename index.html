@@ -489,7 +489,7 @@
 </div>
 
 <footer style="padding:14px 16px 20px; text-align:center; color:var(--text-muted); font-family:'IBM Plex Mono'; font-size:0.68rem;">
-  v45 · dados compartilhados (Firebase) · atualizado em 14/09/2026
+  v46 · dados compartilhados (Firebase) · atualizado em 14/09/2026
 </footer>
 
 <div class="overlay" id="overlay">
@@ -1685,15 +1685,17 @@ function applyEditorUI(){
     }
   }
   document.querySelectorAll('.add-form').forEach(f => {
-    if(f.id === 'addMemberForm') return; // tratado separado, usa permissão de Membros
+    if(f.id === 'addMemberForm' || f.id === 'newEditorForm') return; // tratados separado
     f.style.display = isEditor ? 'flex' : 'none';
   });
   const addMemberForm = document.getElementById('addMemberForm');
   if(addMemberForm) addMemberForm.style.display = canMembros ? 'flex' : 'none';
+  const newEditorForm = document.getElementById('newEditorForm');
+  if(newEditorForm) newEditorForm.style.display = isSuperAdmin ? 'flex' : 'none';
   const editorsSection = document.getElementById('editorsListSection');
-  if(editorsSection) editorsSection.style.display = isEditor ? 'block' : 'none';
+  if(editorsSection) editorsSection.style.display = isSuperAdmin ? 'block' : 'none';
   const requestsSection = document.getElementById('accessRequestsSection');
-  if(requestsSection) requestsSection.style.display = isEditor ? 'block' : 'none';
+  if(requestsSection) requestsSection.style.display = isSuperAdmin ? 'block' : 'none';
 
   const banner = document.getElementById('accessGate');
   const loggedOutBlock = document.getElementById('accessGateLoggedOut');
