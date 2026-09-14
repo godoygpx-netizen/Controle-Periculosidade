@@ -1,0 +1,47 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isEditor() {
+      return request.auth != null &&
+        exists(/databases/$(database)/documents/config/editors) &&
+        request.auth.uid in get(/databases/$(database)/documents/config/editors).data.uids;
+    }
+
+    function myPerms() {
+      return get(/databases/$(database)/documents/config/editors).data
+        .get('perms', {})
+        .get(request.auth.uid, {'painel': true, 'historico': true, 'membros': true});
+    }
+
+    match /members/{id} {
+      allow read: if isEditor();
+      allow write: if isEditor() && myPerms().get('membros', true) == true;
+    }
+    match /signatures/{id} {
+      allow read: if isEditor();
+      allow create: if isEditor() && myPerms().get('painel', true) == true;
+      allow update, delete: if isEditor() && myPerms().get('historico', true) == true;
+    }
+    match /config/{id} {
+      allow read: if isEditor();
+      allow write: if request.auth != null &&
+        request.auth.uid == "2lPeo5B0uSgni43kAfkHX81Nt522";
+    }
+    match /activity_log/{id} {
+      allow read: if request.auth != null &&
+        request.auth.uid == "2lPeo5B0uSgni43kAfkHX81Nt522";
+      allow write: if isEditor();
+    }
+    match /access_requests/{id} {
+      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
+      allow read: if isEditor();
+      allow delete: if isEditor();
+    }
+    match /usernames/{username} {
+      allow read: if true;
+      allow write: if isEditor() ||
+        (request.auth != null && request.resource.data.uid == request.auth.uid);
+    }
+  }
+}
