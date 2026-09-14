@@ -394,7 +394,7 @@
 </main>
 
 <footer style="padding:14px 16px 20px; text-align:center; color:var(--text-muted); font-family:'IBM Plex Mono'; font-size:0.68rem;">
-  v15 · dados compartilhados (Firebase) · atualizado em 13/09/2026
+  v18 · dados compartilhados (Firebase) · atualizado em 13/09/2026
 </footer>
 
 <div class="overlay" id="overlay">
@@ -483,9 +483,12 @@ function fmtDate(iso){
   return `${d}/${m}/${y}`;
 }
 
-// latest signature record for a given slot member
+// latest signature record that covers this member: either their own slot
+// was signed (by them or by a substitute), or they personally went and
+// signed — as themselves or while substituting for someone else, which
+// counts as their own signature too.
 function latestFor(memberId){
-  const recs = signatures.filter(s => s.slotMemberId === memberId)
+  const recs = signatures.filter(s => s.slotMemberId === memberId || s.signedBy === memberId)
     .sort((a,b) => b.validUntil.localeCompare(a.validUntil) || b.date.localeCompare(a.date));
   return recs[0] || null;
 }
