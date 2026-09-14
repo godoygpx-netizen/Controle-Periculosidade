@@ -430,7 +430,7 @@
 </main>
 
 <footer style="padding:14px 16px 20px; text-align:center; color:var(--text-muted); font-family:'IBM Plex Mono'; font-size:0.68rem;">
-  v29 · dados compartilhados (Firebase) · atualizado em 14/09/2026
+  v30 · dados compartilhados (Firebase) · atualizado em 14/09/2026
 </footer>
 
 <div class="overlay" id="overlay">
@@ -489,7 +489,8 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import {
   getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, sendPasswordResetEmail,
-  createUserWithEmailAndPassword, EmailAuthProvider, reauthenticateWithCredential, updateEmail, updatePassword
+  createUserWithEmailAndPassword, EmailAuthProvider, reauthenticateWithCredential, updateEmail, updatePassword,
+  verifyBeforeUpdateEmail
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
 const firebaseConfig = {
@@ -1252,25 +1253,39 @@ document.getElementById('saveMyAccountBtn').onclick = async () => {
     const credential = EmailAuthProvider.credential(user.email, currentPassword);
     await reauthenticateWithCredential(user, credential);
 
-    const oldEmail = user.email;
-    if(newEmail && newEmail !== oldEmail){
-      await updateEmail(user, newEmail);
-      // mantém a lista de editores com o e-mail certo para exibição
-      const uids = editorsDoc.uids || [];
-      if(uids.includes(user.uid)){
-        await updateDoc(doc(db, 'config', 'editors'), { [`emails.${user.uid}`]: newEmail });
-      }
-    }
     if(newPassword){
       await updatePassword(user, newPassword);
     }
 
+    const oldEmail = user.email;
+    let emailPending = false;
+    if(newEmail && newEmail !== oldEmail){
+      try{
+        await updateEmail(user, newEmail);
+        const uids = editorsDoc.uids || [];
+        if(uids.includes(user.uid)){
+          await updateDoc(doc(db, 'config', 'editors'), { [`emails.${user.uid}`]: newEmail });
+        }
+      } catch(emailErr){
+        if(emailErr.code === 'auth/operation-not-allowed'){
+          // esta conta do Firebase exige confirmar o e-mail novo por link,
+          // em vez de trocar na hora
+          await verifyBeforeUpdateEmail(user, newEmail);
+          emailPending = true;
+        } else {
+          throw emailErr;
+        }
+      }
+    }
+
     currentUserEmail = user.email;
-    logActivity('update_account', `Atualizou a própria conta (${oldEmail}${newEmail && newEmail !== oldEmail ? ' → ' + newEmail : ''})`);
+    logActivity('update_account', `Atualizou a própria conta (${oldEmail}${newEmail && newEmail !== oldEmail ? (emailPending ? ' → ' + newEmail + ' [confirmação pendente]' : ' → ' + newEmail) : ''})`);
     document.getElementById('myCurrentPassword').value = '';
     document.getElementById('myNewEmail').value = '';
     document.getElementById('myNewPassword').value = '';
-    alert('Conta atualizada com sucesso!');
+    alert(emailPending
+      ? `Mandamos um link de confirmação para ${newEmail}. O e-mail só muda de verdade depois que você clicar nesse link (verifique o spam).`
+      : 'Conta atualizada com sucesso!');
   } catch(e){
     if(e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential'){
       alert('Senha atual incorreta.');
@@ -1281,7 +1296,7 @@ document.getElementById('saveMyAccountBtn').onclick = async () => {
     } else if(e.code === 'auth/requires-recent-login'){
       alert('Por segurança, saia e entre de novo antes de tentar essa alteração.');
     } else {
-      alert('Não foi possível salvar as alterações. Tente novamente.');
+      alert('Não foi possível salvar as alterações (' + (e.code || e.message || 'erro desconhecido') + '). Tente novamente.');
     }
   } finally {
     btn.disabled = false;
