@@ -357,15 +357,25 @@
       <p id="headerSub">carregando…</p>
       <p id="headerNote" style="margin:6px 0 0; color:var(--amber); font-family:'IBM Plex Mono'; font-size:0.74rem;">⚠ Dados considerados a partir de 07/2026</p>
     </div>
-    <button type="button" id="authBtn" class="auth-btn">Entrar</button>
+    <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px; flex-shrink:0;">
+      <span id="loggedInEmail" style="display:none; font-family:'IBM Plex Mono'; font-size:0.66rem; color:var(--text-muted); max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></span>
+      <button type="button" id="authBtn" class="auth-btn">Entrar</button>
+    </div>
   </div>
 </header>
 
-<div id="accessRequestBanner" style="display:none; margin:14px 16px 0; padding:12px; background:var(--surface); border:1px solid var(--steel);">
-  <p style="margin:0 0 8px; font-size:0.84rem; color:var(--text);">Você está logado, mas ainda não tem acesso de edição.</p>
-  <button type="button" id="requestAccessBtn" class="btn primary" style="width:100%;">Pedir acesso de editor</button>
+<div id="accessGate" style="display:none; margin:24px 16px 0; padding:22px 16px; background:var(--surface); border:1px solid var(--line);">
+  <div id="accessGateLoggedOut" style="display:none; text-align:center;">
+    <p style="margin:0 0 14px; font-size:0.92rem; color:var(--text);">Este app é restrito. Entre com sua conta para visualizar.</p>
+    <button type="button" id="gateLoginBtn" class="btn primary" style="width:100%; padding:12px;">Entrar</button>
+  </div>
+  <div id="accessGateNoAccess" style="display:none; text-align:center;">
+    <p style="margin:0 0 14px; font-size:0.92rem; color:var(--text);">Você está logado, mas ainda não tem acesso liberado.</p>
+    <button type="button" id="requestAccessBtn" class="btn primary" style="width:100%; padding:12px;">Pedir acesso</button>
+  </div>
 </div>
 
+<div id="appContent">
 <nav class="tabs">
   <button data-view="painel" class="active">Painel</button>
   <button data-view="ranking">Ranking</button>
@@ -453,9 +463,10 @@
   </div>
 
 </main>
+</div>
 
 <footer style="padding:14px 16px 20px; text-align:center; color:var(--text-muted); font-family:'IBM Plex Mono'; font-size:0.68rem;">
-  v36 · dados compartilhados (Firebase) · atualizado em 14/09/2026
+  v38 · dados compartilhados (Firebase) · atualizado em 14/09/2026
 </footer>
 
 <div class="overlay" id="overlay">
@@ -1105,7 +1116,13 @@ function renderHistorico(){
 function buildSummaryText(){
   const today = new Date();
   const dateStr = fmtDate(today.toISOString().slice(0,10));
-  const all = [...members].sort((a,b) => a.name.localeCompare(b.name, 'pt-BR'));
+  const statusOrder = { ok: 0, warn: 1, none: 2 };
+  const all = [...members].sort((a, b) => {
+    const oa = statusOrder[statusFor(a.id).state];
+    const ob = statusOrder[statusFor(b.id).state];
+    if(oa !== ob) return oa - ob;
+    return a.name.localeCompare(b.name, 'pt-BR');
+  });
   const lines = [`*Controle de Periculosidade* — ${dateStr}`, ''];
   all.forEach(m => {
     const st = statusFor(m.id);
@@ -1506,6 +1523,15 @@ const authOverlay = document.getElementById('authOverlay');
 function applyEditorUI(){
   authBtn.textContent = isAuthenticated ? 'Sair' : 'Entrar';
   authBtn.classList.toggle('is-editor', isEditor);
+  const loggedInEmail = document.getElementById('loggedInEmail');
+  if(loggedInEmail){
+    if(isAuthenticated && currentUserEmail){
+      loggedInEmail.textContent = currentUserEmail;
+      loggedInEmail.style.display = 'block';
+    } else {
+      loggedInEmail.style.display = 'none';
+    }
+  }
   document.querySelectorAll('.add-form').forEach(f => {
     if(f.id === 'addMemberForm') return; // tratado separado, usa permissão de Membros
     f.style.display = isEditor ? 'flex' : 'none';
@@ -1517,8 +1543,21 @@ function applyEditorUI(){
   const requestsSection = document.getElementById('accessRequestsSection');
   if(requestsSection) requestsSection.style.display = isEditor ? 'block' : 'none';
 
-  const banner = document.getElementById('accessRequestBanner');
-  if(banner) banner.style.display = (isAuthenticated && !isEditor) ? 'block' : 'none';
+  const banner = document.getElementById('accessGate');
+  const loggedOutBlock = document.getElementById('accessGateLoggedOut');
+  const noAccessBlock = document.getElementById('accessGateNoAccess');
+  const appContent = document.getElementById('appContent');
+  if(banner && appContent){
+    if(isEditor){
+      banner.style.display = 'none';
+      appContent.style.display = 'block';
+    } else {
+      banner.style.display = 'block';
+      appContent.style.display = 'none';
+      loggedOutBlock.style.display = isAuthenticated ? 'none' : 'block';
+      noAccessBlock.style.display = isAuthenticated ? 'block' : 'none';
+    }
+  }
 
   const tabAtividade = document.getElementById('tabAtividade');
   if(tabAtividade){
@@ -1542,6 +1581,11 @@ authBtn.addEventListener('click', () => {
     document.getElementById('authPassword').value = '';
     authOverlay.classList.add('active');
   }
+});
+document.getElementById('gateLoginBtn').addEventListener('click', () => {
+  document.getElementById('authEmail').value = '';
+  document.getElementById('authPassword').value = '';
+  authOverlay.classList.add('active');
 });
 document.getElementById('authCancelBtn').onclick = () => authOverlay.classList.remove('active');
 document.getElementById('forgotPasswordLink').onclick = async () => {
