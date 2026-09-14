@@ -337,7 +337,7 @@
     font-size:0.88rem;
     resize:vertical;
   }
-  .sheet input[type=email], .sheet input[type=password], .sheet input[type=text]{
+  .sheet input[type=email], .sheet input[type=password], .sheet input[type=text], .sheet select{
     width:100%;
     background:var(--bg);
     border:1px solid var(--line-strong);
@@ -482,7 +482,7 @@
 </div>
 
 <footer style="padding:14px 16px 20px; text-align:center; color:var(--text-muted); font-family:'IBM Plex Mono'; font-size:0.68rem;">
-  v42 · dados compartilhados (Firebase) · atualizado em 14/09/2026
+  v43 · dados compartilhados (Firebase) · atualizado em 14/09/2026
 </footer>
 
 <div class="overlay" id="overlay">
@@ -546,6 +546,26 @@
     <button class="confirm" id="actionChoiceSignBtn">Ele assinou</button>
     <button class="confirm" id="actionChoiceSubBtn" style="background:var(--steel); margin-top:8px;">Foi substituído por outra pessoa</button>
     <button class="cancel" id="actionChoiceCancelBtn">Cancelar</button>
+  </div>
+</div>
+
+<div class="overlay" id="editMemberOverlay">
+  <div class="sheet">
+    <h3>Editar integrante</h3>
+    <p class="sub">Ajuste o nome e a tecnologia.</p>
+    <div class="date-row">
+      <label>Nome do integrante</label>
+      <input type="text" id="editMemberName">
+    </div>
+    <div class="date-row">
+      <label>Tecnologia</label>
+      <select id="editMemberTech">
+        <option value="mecanica">Mecânica</option>
+        <option value="eletrica">Elétrica</option>
+      </select>
+    </div>
+    <button class="confirm" id="saveMemberEditBtn">Salvar alterações</button>
+    <button class="cancel" id="editMemberCancelBtn">Cancelar</button>
   </div>
 </div>
 
@@ -1289,7 +1309,11 @@ function renderMembros(){
     return `
     <div class="member-manage-row">
       <span>${escapeHtml(m.name)}${techBadge}</span>
-      ${canMembros ? `<button class="del" onclick="removeMember('${m.id}')">remover</button>` : ''}
+      ${canMembros ? `
+      <span style="display:flex; gap:14px;">
+        <button class="row-edit" onclick="openEditMember('${m.id}')">editar</button>
+        <button class="del" onclick="removeMember('${m.id}')">remover</button>
+      </span>` : ''}
     </div>
   `;
   }).join('');
@@ -1416,6 +1440,47 @@ async function removeEditor(uid){
   });
   logActivity('remove_editor', `Removeu o acesso de editor de ${email}`);
 }
+
+let editingMemberId = null;
+function openEditMember(id){
+  const member = members.find(m => m.id === id);
+  if(!member) return;
+  editingMemberId = id;
+  document.getElementById('editMemberName').value = member.name;
+  document.getElementById('editMemberTech').value = member.tech === 'eletrica' ? 'eletrica' : 'mecanica';
+  document.getElementById('editMemberOverlay').classList.add('active');
+}
+document.getElementById('editMemberCancelBtn').onclick = () => {
+  document.getElementById('editMemberOverlay').classList.remove('active');
+  editingMemberId = null;
+};
+document.getElementById('editMemberOverlay').addEventListener('click', (e) => {
+  if(e.target.id === 'editMemberOverlay'){
+    e.currentTarget.classList.remove('active');
+    editingMemberId = null;
+  }
+});
+document.getElementById('saveMemberEditBtn').onclick = async () => {
+  const id = editingMemberId;
+  if(!id) return;
+  const name = document.getElementById('editMemberName').value.trim();
+  const tech = document.getElementById('editMemberTech').value;
+  if(!name){ alert('Digite o nome do integrante.'); return; }
+  const btn = document.getElementById('saveMemberEditBtn');
+  btn.disabled = true;
+  btn.textContent = 'Salvando...';
+  try{
+    await updateDoc(doc(db, 'members', id), { name, tech });
+    logActivity('edit_member', `Editou integrante para ${name} (${tech === 'mecanica' ? 'Mecânica' : 'Elétrica'})`);
+    document.getElementById('editMemberOverlay').classList.remove('active');
+    editingMemberId = null;
+  } catch(e){
+    alert('Não foi possível salvar (' + (e.code || e.message || 'erro desconhecido') + '). Verifique se você ainda está logado como editor.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Salvar alterações';
+  }
+};
 
 async function removeMember(id){
   if(!confirm('Remover este integrante? O histórico de assinaturas dele será mantido.')) return;
@@ -1841,6 +1906,7 @@ window.openSubstitute = openSubstitute;
 window.openEditRecord = openEditRecord;
 window.deleteRecord = deleteRecord;
 window.removeMember = removeMember;
+window.openEditMember = openEditMember;
 window.removeEditor = removeEditor;
 window.approveAccessRequest = approveAccessRequest;
 window.denyAccessRequest = denyAccessRequest;
