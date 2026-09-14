@@ -201,6 +201,14 @@
     font-family:'IBM Plex Sans';
     font-size:0.92rem;
   }
+  .perm-row{display:flex; flex-direction:column; gap:8px;}
+  .perm-row label{
+    display:flex; align-items:center; gap:8px;
+    font-size:0.86rem; color:var(--text); cursor:pointer;
+  }
+  .perm-row input[type=checkbox]{
+    width:18px; height:18px; accent-color:var(--amber); flex-shrink:0;
+  }
   .team-select{display:flex; gap:8px;}
   .team-select button{
     flex:1;
@@ -353,6 +361,11 @@
   </div>
 </header>
 
+<div id="accessRequestBanner" style="display:none; margin:14px 16px 0; padding:12px; background:var(--surface); border:1px solid var(--steel);">
+  <p style="margin:0 0 8px; font-size:0.84rem; color:var(--text);">Você está logado, mas ainda não tem acesso de edição.</p>
+  <button type="button" id="requestAccessBtn" class="btn primary" style="width:100%;">Pedir acesso de editor</button>
+</div>
+
 <nav class="tabs">
   <button data-view="painel" class="active">Painel</button>
   <button data-view="ranking">Ranking</button>
@@ -391,7 +404,7 @@
   </div>
 
   <div class="view" id="view-membros">
-    <div class="add-form">
+    <div class="add-form" id="addMemberForm">
       <label>Nome do integrante</label>
       <input type="text" id="newName" placeholder="Ex.: Carlos Andrade">
       <button type="button" class="submit" id="addMemberBtn">Cadastrar</button>
@@ -404,7 +417,18 @@
       <input type="email" id="newEditorEmail" autocomplete="off">
       <label>Senha (mínimo 6 caracteres)</label>
       <input type="password" id="newEditorPassword" autocomplete="new-password">
+      <label>O que essa pessoa pode editar</label>
+      <div class="perm-row">
+        <label><input type="checkbox" id="newEditorPermPainel" checked> Painel (assinar / substituir)</label>
+        <label><input type="checkbox" id="newEditorPermHistorico" checked> Histórico (editar / excluir)</label>
+        <label><input type="checkbox" id="newEditorPermMembros" checked> Membros (cadastrar / remover)</label>
+      </div>
       <button type="button" class="submit" id="createEditorBtn">Criar acesso de editor</button>
+    </div>
+
+    <div id="accessRequestsSection" style="display:none; margin-top:22px;">
+      <div style="font-family:'Space Grotesk'; font-size:0.86rem; color:var(--amber); margin-bottom:8px;">Solicitações de acesso</div>
+      <div id="accessRequestsWrap"></div>
     </div>
 
     <div id="editorsListSection" style="display:none; margin-top:22px;">
@@ -431,7 +455,7 @@
 </main>
 
 <footer style="padding:14px 16px 20px; text-align:center; color:var(--text-muted); font-family:'IBM Plex Mono'; font-size:0.68rem;">
-  v33 · dados compartilhados (Firebase) · atualizado em 14/09/2026
+  v35 · dados compartilhados (Firebase) · atualizado em 14/09/2026
 </footer>
 
 <div class="overlay" id="overlay">
@@ -518,10 +542,23 @@ let members = [];
 let signatures = [];
 let activityLog = [];
 let editorsDoc = { uids: [], emails: {} };
-let isEditor = false;
+let isEditor = false; // autenticado E autorizado (está na lista de editores)
+let isAuthenticated = false; // só logado, pode ou não estar autorizado
 let currentUserEmail = null;
 const SUPER_ADMIN_UID = "2lPeo5B0uSgni43kAfkHX81Nt522";
 let isSuperAdmin = false;
+let accessRequests = [];
+let canPainel = false;
+let canHistorico = false;
+let canMembros = false;
+
+function hasPerm(key){
+  const user = auth.currentUser;
+  if(!isEditor || !user) return false;
+  const perms = (editorsDoc.perms || {})[user.uid];
+  if(!perms) return true; // legado: editor sem registro de permissões = acesso total
+  return !!perms[key];
+}
 
 function todayISO(){ return new Date().toISOString().slice(0,10); }
 
@@ -584,6 +621,7 @@ function render(){
   renderMembros();
   renderAtividade();
   renderEditorsList();
+  renderAccessRequests();
 }
 
 function renderHeader(){
@@ -616,10 +654,10 @@ function memberRowHtml(m){
       </div>
       <div class="row-actions">
         <span class="status-pill ${pillClass}">${pillText}</span>
-        ${isEditor && st.rec ? `<button class="row-edit" onclick="openEditRecord('${st.rec.id}')">editar</button>` : ''}
+        ${canHistorico && st.rec ? `<button class="row-edit" onclick="openEditRecord('${st.rec.id}')">editar</button>` : ''}
       </div>
     </div>
-    ${needsAction && isEditor ? `
+    ${needsAction && canPainel ? `
     <div class="member-row" style="border-top:none; padding-top:0;">
       <div></div>
       <div class="row-actions">
@@ -962,7 +1000,7 @@ function openMemberHistory(memberId){
         <div>${line}</div>
         ${s.aircraft ? `<div style="margin-top:4px; color:var(--steel); font-size:0.82rem; font-family:'IBM Plex Mono';">✈ ${escapeHtml(s.aircraft)}</div>` : ''}
         ${s.reason ? `<div style="margin-top:4px; color:var(--text-muted); font-size:0.82rem;">${escapeHtml(s.reason)}</div>` : ''}
-        ${isEditor ? `
+        ${canHistorico ? `
         <div class="hist-actions">
           <button onclick="openEditRecord('${s.id}')">editar</button>
           <button class="del" onclick="deleteRecord('${s.id}')">excluir</button>
@@ -1020,7 +1058,7 @@ function renderHistorico(){
       <div>${line}</div>
       ${s.aircraft ? `<div style="margin-top:4px; color:var(--steel); font-size:0.82rem; font-family:'IBM Plex Mono';">✈ ${escapeHtml(s.aircraft)}</div>` : ''}
       ${s.reason ? `<div style="margin-top:4px; color:var(--text-muted); font-size:0.82rem;">${escapeHtml(s.reason)}</div>` : ''}
-      ${isEditor ? `
+      ${canHistorico ? `
       <div class="hist-actions">
         <button onclick="openEditRecord('${s.id}')">editar</button>
         <button class="del" onclick="deleteRecord('${s.id}')">excluir</button>
@@ -1129,7 +1167,7 @@ function renderMembros(){
   wrap.innerHTML = all.map(m => `
     <div class="member-manage-row">
       <span>${escapeHtml(m.name)}</span>
-      ${isEditor ? `<button class="del" onclick="removeMember('${m.id}')">remover</button>` : ''}
+      ${canMembros ? `<button class="del" onclick="removeMember('${m.id}')">remover</button>` : ''}
     </div>
   `).join('');
 }
@@ -1158,6 +1196,57 @@ function renderAtividade(){
   `).join('');
 }
 
+function renderAccessRequests(){
+  const wrap = document.getElementById('accessRequestsWrap');
+  if(!wrap) return;
+  if(accessRequests.length === 0){
+    wrap.innerHTML = `<div class="empty">Nenhuma solicitação pendente.</div>`;
+    return;
+  }
+  wrap.innerHTML = accessRequests.map(r => `
+    <div style="padding:10px 0; border-bottom:1px solid var(--line);">
+      <div style="font-size:0.92rem; margin-bottom:8px;">${escapeHtml(r.email || r.uid)}</div>
+      <div class="perm-row" style="margin-bottom:10px;">
+        <label><input type="checkbox" id="reqPainel-${r.id}" checked> Painel (assinar / substituir)</label>
+        <label><input type="checkbox" id="reqHistorico-${r.id}" checked> Histórico (editar / excluir)</label>
+        <label><input type="checkbox" id="reqMembros-${r.id}" checked> Membros (cadastrar / remover)</label>
+      </div>
+      <div style="display:flex; gap:16px;">
+        <button class="row-edit" onclick="approveAccessRequest('${r.id}', '${r.uid}', '${escapeHtml(r.email || '')}')">aprovar</button>
+        <button class="del" onclick="denyAccessRequest('${r.id}')">recusar</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function approveAccessRequest(requestId, uid, email){
+  const perms = {
+    painel: document.getElementById(`reqPainel-${requestId}`).checked,
+    historico: document.getElementById(`reqHistorico-${requestId}`).checked,
+    membros: document.getElementById(`reqMembros-${requestId}`).checked
+  };
+  try{
+    await updateDoc(doc(db, 'config', 'editors'), {
+      uids: arrayUnion(uid),
+      [`emails.${uid}`]: email,
+      [`perms.${uid}`]: perms
+    });
+    await deleteDoc(doc(db, 'access_requests', requestId));
+    logActivity('approve_access', `Aprovou o acesso de editor para ${email || uid} (${Object.keys(perms).filter(k=>perms[k]).join(', ') || 'nenhuma área'})`);
+  } catch(e){
+    alert('Não foi possível aprovar (' + (e.code || e.message || 'erro desconhecido') + ').');
+  }
+}
+
+async function denyAccessRequest(requestId){
+  if(!confirm('Recusar esta solicitação de acesso?')) return;
+  try{
+    await deleteDoc(doc(db, 'access_requests', requestId));
+  } catch(e){
+    alert('Não foi possível recusar (' + (e.code || e.message || 'erro desconhecido') + ').');
+  }
+}
+
 function renderEditorsList(){
   const wrap = document.getElementById('editorsListWrap');
   if(!wrap) return;
@@ -1169,10 +1258,22 @@ function renderEditorsList(){
   wrap.innerHTML = uids.map(uid => {
     const email = (editorsDoc.emails || {})[uid] || uid;
     const isYou = currentUserEmail && email === currentUserEmail;
+    const perms = (editorsDoc.perms || {})[uid];
+    const labels = [
+      { key: 'painel', text: 'Painel' },
+      { key: 'historico', text: 'Histórico' },
+      { key: 'membros', text: 'Membros' }
+    ];
+    const permBadges = perms
+      ? labels.map(l => `<span class="team-tag ${perms[l.key] ? 'A' : ''}" style="border-color:${perms[l.key] ? 'var(--amber)' : 'var(--line-strong)'}; color:${perms[l.key] ? 'var(--amber)' : 'var(--text-muted)'};">${l.text}</span>`).join(' ')
+      : `<span style="color:var(--text-muted); font-size:0.72rem;">acesso total (legado)</span>`;
     return `
-    <div class="member-manage-row">
-      <span>${escapeHtml(email)}${isYou ? ' <span style="color:var(--text-muted); font-size:0.76rem;">(você)</span>' : ''}</span>
-      <button class="del" onclick="removeEditor('${uid}')">remover</button>
+    <div class="member-manage-row" style="flex-direction:column; align-items:stretch; gap:6px;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <span>${escapeHtml(email)}${isYou ? ' <span style="color:var(--text-muted); font-size:0.76rem;">(você)</span>' : ''}</span>
+        <button class="del" onclick="removeEditor('${uid}')">remover</button>
+      </div>
+      <div style="display:flex; gap:6px; flex-wrap:wrap;">${permBadges}</div>
     </div>
   `;
   }).join('');
@@ -1233,14 +1334,20 @@ document.getElementById('createEditorBtn').onclick = async () => {
   const btn = document.getElementById('createEditorBtn');
   btn.disabled = true;
   btn.textContent = 'Criando...';
+  const perms = {
+    painel: document.getElementById('newEditorPermPainel').checked,
+    historico: document.getElementById('newEditorPermHistorico').checked,
+    membros: document.getElementById('newEditorPermMembros').checked
+  };
   try{
     const cred = await createUserWithEmailAndPassword(authSecondary, email, password);
     await updateDoc(doc(db, 'config', 'editors'), {
       uids: arrayUnion(cred.user.uid),
-      [`emails.${cred.user.uid}`]: email
+      [`emails.${cred.user.uid}`]: email,
+      [`perms.${cred.user.uid}`]: perms
     });
     await signOut(authSecondary); // não deixa essa sessão secundária pendurada
-    logActivity('add_editor', `Criou acesso de editor para ${email}`);
+    logActivity('add_editor', `Criou acesso de editor para ${email} (${Object.keys(perms).filter(k=>perms[k]).join(', ') || 'nenhuma área'})`);
     emailInput.value = '';
     passwordInput.value = '';
     alert(`Editor criado! ${email} já pode entrar com a senha cadastrada.`);
@@ -1362,11 +1469,21 @@ const authBtn = document.getElementById('authBtn');
 const authOverlay = document.getElementById('authOverlay');
 
 function applyEditorUI(){
-  authBtn.textContent = isEditor ? 'Sair (editor)' : 'Entrar';
+  authBtn.textContent = isAuthenticated ? 'Sair' : 'Entrar';
   authBtn.classList.toggle('is-editor', isEditor);
-  document.querySelectorAll('.add-form').forEach(f => f.style.display = isEditor ? 'flex' : 'none');
+  document.querySelectorAll('.add-form').forEach(f => {
+    if(f.id === 'addMemberForm') return; // tratado separado, usa permissão de Membros
+    f.style.display = isEditor ? 'flex' : 'none';
+  });
+  const addMemberForm = document.getElementById('addMemberForm');
+  if(addMemberForm) addMemberForm.style.display = canMembros ? 'flex' : 'none';
   const editorsSection = document.getElementById('editorsListSection');
   if(editorsSection) editorsSection.style.display = isEditor ? 'block' : 'none';
+  const requestsSection = document.getElementById('accessRequestsSection');
+  if(requestsSection) requestsSection.style.display = isEditor ? 'block' : 'none';
+
+  const banner = document.getElementById('accessRequestBanner');
+  if(banner) banner.style.display = (isAuthenticated && !isEditor) ? 'block' : 'none';
 
   const tabAtividade = document.getElementById('tabAtividade');
   if(tabAtividade){
@@ -1383,7 +1500,7 @@ function applyEditorUI(){
 applyEditorUI();
 
 authBtn.addEventListener('click', () => {
-  if(isEditor){
+  if(isAuthenticated){
     signOut(auth);
   } else {
     document.getElementById('authEmail').value = '';
@@ -1418,13 +1535,49 @@ document.getElementById('authSubmitBtn').onclick = async () => {
   }
 };
 
-onAuthStateChanged(auth, (user) => {
-  isEditor = !!user;
+document.getElementById('requestAccessBtn').onclick = async () => {
+  const user = auth.currentUser;
+  if(!user) return;
+  const btn = document.getElementById('requestAccessBtn');
+  btn.disabled = true;
+  btn.textContent = 'Enviando...';
+  try{
+    const already = accessRequests.some(r => r.uid === user.uid);
+    if(already){
+      alert('Você já pediu acesso — aguarde um editor aprovar.');
+    } else {
+      await addDoc(collection(db, 'access_requests'), {
+        uid: user.uid,
+        email: user.email,
+        at: new Date().toISOString()
+      });
+      alert('Pedido enviado! Avise um editor pra aprovar dentro do app.');
+    }
+  } catch(e){
+    alert('Não foi possível enviar o pedido (' + (e.code || e.message || 'erro desconhecido') + ').');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Pedir acesso de editor';
+  }
+};
+
+function recomputeAuthorization(){
+  const user = auth.currentUser;
+  isAuthenticated = !!user;
+  isEditor = !!user && (editorsDoc.uids || []).includes(user.uid);
   currentUserEmail = user ? user.email : null;
   isSuperAdmin = !!user && user.uid === SUPER_ADMIN_UID;
+  canPainel = hasPerm('painel');
+  canHistorico = hasPerm('historico');
+  canMembros = hasPerm('membros');
   applyEditorUI();
   updateActivitySubscription();
+  updateAccessRequestsSubscription();
   render();
+}
+
+onAuthStateChanged(auth, (user) => {
+  recomputeAuthorization();
 });
 
 // dados em tempo real do Firestore — qualquer alteração (sua ou de outra
@@ -1453,11 +1606,25 @@ function updateActivitySubscription(){
   }
 }
 
+let unsubscribeRequests = null;
+function updateAccessRequestsSubscription(){
+  if(isEditor && !unsubscribeRequests){
+    unsubscribeRequests = onSnapshot(collection(db, 'access_requests'), (snap) => {
+      accessRequests = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      render();
+    }, (err) => console.error('Erro ao ler solicitações de acesso:', err));
+  } else if(!isEditor && unsubscribeRequests){
+    unsubscribeRequests();
+    unsubscribeRequests = null;
+    accessRequests = [];
+  }
+}
+
 onSnapshot(doc(db, 'config', 'editors'), (snap) => {
   editorsDoc = snap.exists() ? snap.data() : { uids: [], emails: {} };
   if(!editorsDoc.uids) editorsDoc.uids = [];
   if(!editorsDoc.emails) editorsDoc.emails = {};
-  render();
+  recomputeAuthorization();
 }, (err) => console.error('Erro ao ler lista de editores:', err));
 
 // funções referenciadas via onclick="" no HTML gerado precisam estar
@@ -1468,6 +1635,8 @@ window.openEditRecord = openEditRecord;
 window.deleteRecord = deleteRecord;
 window.removeMember = removeMember;
 window.removeEditor = removeEditor;
+window.approveAccessRequest = approveAccessRequest;
+window.denyAccessRequest = denyAccessRequest;
 window.openMemberHistory = openMemberHistory;
 
 render();
