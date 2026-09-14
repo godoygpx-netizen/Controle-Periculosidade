@@ -466,7 +466,7 @@
 </div>
 
 <footer style="padding:14px 16px 20px; text-align:center; color:var(--text-muted); font-family:'IBM Plex Mono'; font-size:0.68rem;">
-  v39 · dados compartilhados (Firebase) · atualizado em 14/09/2026
+  v40 · dados compartilhados (Firebase) · atualizado em 14/09/2026
 </footer>
 
 <div class="overlay" id="overlay">
@@ -480,6 +480,10 @@
     <div class="date-row">
       <label>Aeronave</label>
       <input type="text" id="aircraftInput" placeholder="Ex.: PT-ABC">
+    </div>
+    <div class="date-row">
+      <label>Atividade</label>
+      <input type="text" id="activityInput" placeholder="Ex.: Abastecimento">
     </div>
     <div class="date-row" id="reasonRow" style="display:none;">
       <label>Justificativa da substituição</label>
@@ -616,8 +620,11 @@ function latestFor(memberId){
 }
 
 // total times a person has personally signed (own slot or as substitute) — used for fair rotation
+// conta ciclos distintos em que a pessoa assinou (não registros) — assinar
+// várias vezes no mesmo ciclo continua valendo só 1 para o ranking/prioridade
 function totalSignedBy(memberId){
-  return signatures.filter(s => s.signedBy === memberId).length;
+  const cycles = new Set(signatures.filter(s => s.signedBy === memberId).map(s => s.validUntil));
+  return cycles.size;
 }
 
 // most recent date this person actually signed (own or as substitute); null if never
@@ -661,7 +668,7 @@ function memberRowHtml(m){
   let metaLine = '';
   if(st.state === 'ok'){
     pillClass='ok'; pillText = `válida até ${fmtDate(st.rec.validUntil)}`;
-    metaLine = `assinou em ${fmtDate(st.rec.date)}${st.rec.aircraft ? ` · ${escapeHtml(st.rec.aircraft)}` : ''}`;
+    metaLine = `assinou em ${fmtDate(st.rec.date)}${st.rec.aircraft ? ` · ${escapeHtml(st.rec.aircraft)}` : ''}${st.rec.activity ? ` · ${escapeHtml(st.rec.activity)}` : ''}`;
   } else if(st.state === 'warn'){
     pillClass='warn'; pillText = `vencida desde ${fmtDate(st.rec.validUntil)}`;
   } else {
@@ -743,8 +750,8 @@ async function logActivity(action, description){
   } catch(e){ console.error('Erro ao registrar atividade:', e); }
 }
 
-async function registerSignature(slotMemberId, signedBy, date, aircraft, reason){
-  const rec = { slotMemberId, signedBy, date, aircraft, validUntil: cycleEnd(date) };
+async function registerSignature(slotMemberId, signedBy, date, aircraft, activity, reason){
+  const rec = { slotMemberId, signedBy, date, aircraft, activity, validUntil: cycleEnd(date) };
   if(reason) rec.reason = reason;
   await addDoc(collection(db, 'signatures'), rec);
 }
@@ -758,9 +765,10 @@ function openSignSelf(memberId){
   const member = members.find(m => m.id === memberId);
 
   document.getElementById('sheetTitle').textContent = `Registrar assinatura de ${member.name}`;
-  document.getElementById('sheetSub').textContent = 'Informe a data e a aeronave.';
+  document.getElementById('sheetSub').textContent = 'Informe a data, a aeronave e a atividade.';
   document.getElementById('signDateInput').value = todayISO();
   document.getElementById('aircraftInput').value = '';
+  document.getElementById('activityInput').value = '';
   document.getElementById('reasonRow').style.display = 'none';
   document.getElementById('reasonInput').value = '';
   document.getElementById('candidateList').innerHTML = '';
@@ -771,15 +779,20 @@ function openSignSelf(memberId){
   confirmBtn.onclick = async () => {
     const date = document.getElementById('signDateInput').value || todayISO();
     const aircraft = document.getElementById('aircraftInput').value.trim();
+    const activity = document.getElementById('activityInput').value.trim();
     if(!aircraft){
       alert('Informe a aeronave antes de registrar.');
+      return;
+    }
+    if(!activity){
+      alert('Informe a atividade antes de registrar.');
       return;
     }
     confirmBtn.disabled = true;
     confirmBtn.textContent = 'Registrando...';
     try{
-      await registerSignature(memberId, memberId, date, aircraft);
-      logActivity('sign', `${member.name} assinou (${aircraft}) — ${fmtDate(date)}`);
+      await registerSignature(memberId, memberId, date, aircraft, activity);
+      logActivity('sign', `${member.name} assinou (${aircraft} · ${activity}) — ${fmtDate(date)}`);
       closeSheet();
     } catch(e){
       alert('Não foi possível registrar (' + (e.code || e.message || 'erro desconhecido') + '). Verifique se você ainda está logado como editor.');
@@ -807,10 +820,11 @@ function openSubstitute(memberId){
 
   document.getElementById('sheetTitle').textContent = `Substituir ${member.name}`;
   document.getElementById('sheetSub').textContent = candidates.length
-    ? `Escolha a data, a aeronave e o substituto (sugestão por menor número de assinaturas):`
+    ? `Escolha a data, a aeronave, a atividade e o substituto (sugestão por menor número de assinaturas):`
     : `Não há outros integrantes cadastrados.`;
   document.getElementById('signDateInput').value = todayISO();
   document.getElementById('aircraftInput').value = '';
+  document.getElementById('activityInput').value = '';
   document.getElementById('reasonRow').style.display = 'block';
   document.getElementById('reasonInput').value = '';
   document.getElementById('confirmSelfBtn').style.display = 'none';
@@ -834,6 +848,11 @@ async function confirmSubstitute(substituteId){
     alert('Informe a aeronave antes de confirmar.');
     return;
   }
+  const activity = document.getElementById('activityInput').value.trim();
+  if(!activity){
+    alert('Informe a atividade antes de confirmar.');
+    return;
+  }
   const reason = document.getElementById('reasonInput').value.trim();
   if(!reason){
     alert('Preencha a justificativa da substituição antes de confirmar.');
@@ -841,10 +860,10 @@ async function confirmSubstitute(substituteId){
   }
   const date = document.getElementById('signDateInput').value || todayISO();
   try{
-    await registerSignature(pendingSlotMember, substituteId, date, aircraft, reason);
+    await registerSignature(pendingSlotMember, substituteId, date, aircraft, activity, reason);
     const origMember = members.find(m => m.id === pendingSlotMember);
     const subMember = members.find(m => m.id === substituteId);
-    logActivity('substitute', `${subMember ? subMember.name : '?'} assinou no lugar de ${origMember ? origMember.name : '?'} (${aircraft}) — ${fmtDate(date)}`);
+    logActivity('substitute', `${subMember ? subMember.name : '?'} assinou no lugar de ${origMember ? origMember.name : '?'} (${aircraft} · ${activity}) — ${fmtDate(date)}`);
     closeSheet();
   } catch(e){
     alert('Não foi possível confirmar (' + (e.code || e.message || 'erro desconhecido') + '). Verifique se você ainda está logado como editor.');
@@ -863,10 +882,11 @@ function openEditRecord(recordId){
 
   document.getElementById('sheetTitle').textContent = `Editar assinatura de ${slotMember ? slotMember.name : '?'}`;
   document.getElementById('sheetSub').textContent = isSubstitute
-    ? `Assinada por ${signer ? signer.name : '?'} no lugar do titular. Ajuste a data, a aeronave e a justificativa.`
-    : 'Ajuste a data e a aeronave desta assinatura.';
+    ? `Assinada por ${signer ? signer.name : '?'} no lugar do titular. Ajuste a data, a aeronave, a atividade e a justificativa.`
+    : 'Ajuste a data, a aeronave e a atividade desta assinatura.';
   document.getElementById('signDateInput').value = rec.date;
   document.getElementById('aircraftInput').value = rec.aircraft || '';
+  document.getElementById('activityInput').value = rec.activity || '';
   document.getElementById('reasonRow').style.display = isSubstitute ? 'block' : 'none';
   document.getElementById('reasonInput').value = rec.reason || '';
   document.getElementById('candidateList').innerHTML = '';
@@ -881,7 +901,12 @@ function openEditRecord(recordId){
       alert('Informe a aeronave antes de salvar.');
       return;
     }
-    const updates = { date, aircraft, validUntil: cycleEnd(date) };
+    const activity = document.getElementById('activityInput').value.trim();
+    if(!activity){
+      alert('Informe a atividade antes de salvar.');
+      return;
+    }
+    const updates = { date, aircraft, activity, validUntil: cycleEnd(date) };
     if(isSubstitute){
       const reason = document.getElementById('reasonInput').value.trim();
       if(!reason){
@@ -894,7 +919,7 @@ function openEditRecord(recordId){
     confirmBtn.textContent = 'Salvando...';
     try{
       await updateDoc(doc(db, 'signatures', recordId), updates);
-      logActivity('edit', `Editou assinatura de ${slotMember ? slotMember.name : '?'} — ${fmtDate(date)}, ${aircraft}`);
+      logActivity('edit', `Editou assinatura de ${slotMember ? slotMember.name : '?'} — ${fmtDate(date)}, ${aircraft}, ${activity}`);
       closeSheet();
     } catch(e){
       alert('Não foi possível salvar (' + (e.code || e.message || 'erro desconhecido') + '). Verifique se você ainda está logado como editor.');
@@ -1046,6 +1071,7 @@ function openMemberHistory(memberId){
         <div class="d">${fmtDate(s.date)}</div>
         <div>${line}</div>
         ${s.aircraft ? `<div style="margin-top:4px; color:var(--steel); font-size:0.82rem; font-family:'IBM Plex Mono';">✈ ${escapeHtml(s.aircraft)}</div>` : ''}
+        ${s.activity ? `<div style="margin-top:2px; color:var(--text-muted); font-size:0.78rem;">${escapeHtml(s.activity)}</div>` : ''}
         ${s.reason ? `<div style="margin-top:4px; color:var(--text-muted); font-size:0.82rem;">${escapeHtml(s.reason)}</div>` : ''}
         ${canHistorico ? `
         <div class="hist-actions">
@@ -1104,6 +1130,7 @@ function renderHistorico(){
       <div class="d">${fmtDate(s.date)}</div>
       <div>${line}</div>
       ${s.aircraft ? `<div style="margin-top:4px; color:var(--steel); font-size:0.82rem; font-family:'IBM Plex Mono';">✈ ${escapeHtml(s.aircraft)}</div>` : ''}
+      ${s.activity ? `<div style="margin-top:2px; color:var(--text-muted); font-size:0.78rem;">${escapeHtml(s.activity)}</div>` : ''}
       ${s.reason ? `<div style="margin-top:4px; color:var(--text-muted); font-size:0.82rem;">${escapeHtml(s.reason)}</div>` : ''}
       ${canHistorico ? `
       <div class="hist-actions">
